@@ -1,0 +1,50 @@
+---
+import GitHubIcon from "@/components/icons/GitHubIcon.astro";
+import EmailIcon from "@/components/icons/EmailIcon.astro";
+---
+
+<footer class="bg-secondary border-t border-white/10 p-10 py-20 flex justify-between w-full mt-auto text-sm">
+  <!-- Contacto -->
+  <nav>
+    <ul class="cursor-pointer space-y-5 cursor-pointer">
+      <li class="flex items-center space-x-2">
+        <GitHubIcon />
+        <a href="https://github.com/karlosvas" target="_blank">@karlosvas</a>
+      </li>
+      <li class="flex items-center space-x-2">
+        <EmailIcon />
+        <a href="mailto:carlosvassan@gmail.com"> carlosvassan@gmail.com </a>
+      </li>
+      <li>+34 675 979 914</li>
+    </ul>
+  </nav>
+  <!-- Derechos de author -->
+  <div class="p-4 text-white text-center">
+    &copy; {new Date().getFullYear()} Ferrum. <br /> Todos los derechos reservados
+  </div>
+  <!-- Recursos -->
+  <div>
+    <span class="text-orange-300"> Recursos </span>
+    <ul class="space-y-5 cursor-pointer mt-5">
+      <li><a href="/doc"> Documentacion </a></li>
+      <li><a href="/tutorials"> Tutoriales </a></li>
+    </ul>
+  </div>
+  <!-- Politicas de privacidad, términos de servicio y licencias -->
+  <div>
+    <span class="text-orange-300"> Legal </span>
+    <ul class="space-y-5 cursor-pointer mt-5">
+      <li>
+        <a href="/license"> Licencia </a>
+      </li>
+      <li><a href="/privacy-policy"> Politicas de privacidad </a></li>
+      <li><a href="/terms-of-service"> Términos de servicio </a></li>
+    </ul>
+  </div>
+</footer>
+
+<!-- Recursos
+Documentación
+Tutoriales
+API
+Comunidad -->

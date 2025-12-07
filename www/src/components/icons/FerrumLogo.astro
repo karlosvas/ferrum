@@ -1,0 +1,82 @@
+---
+const { class: className = "w-10 h-10" } = Astro.props;
+---
+
+<svg 
+  viewBox="0 0 100 100" 
+  class={className}
+  fill="none" 
+  xmlns="http://www.w3.org/2000/svg"
+>
+  <defs>
+    <linearGradient id="mainGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F7931E" />
+      <stop offset="50%" stop-color="#E85A3F" />
+      <stop offset="100%" stop-color="#CE422B" />
+    </linearGradient>
+    <linearGradient id="accentGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#CE422B" />
+      <stop offset="100%" stop-color="#F7931E" />
+    </linearGradient>
+    <filter id="softGlow">
+      <feGaussianBlur stdDeviation="1.5" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  
+  <!-- Outer ring -->
+  <circle 
+    cx="50" 
+    cy="50" 
+    r="45" 
+    fill="none" 
+    stroke="url(#mainGrad)" 
+    stroke-width="1.5" 
+    opacity="0.3"
+  />
+  
+  <!-- Middle decorative ring -->
+  <circle 
+    cx="50" 
+    cy="50" 
+    r="35" 
+    fill="none" 
+    stroke="url(#accentGrad)" 
+    stroke-width="2" 
+    opacity="0.5"
+    stroke-dasharray="5 5"
+  />
+  
+  <!-- Inner solid circle -->
+  <circle 
+    cx="50" 
+    cy="50" 
+    r="25" 
+    fill="url(#mainGrad)" 
+    opacity="0.15"
+  />
+  
+  <!-- Letter F - stylized -->
+  <path
+    d="M 40 35 L 60 35 L 60 40 L 45 40 L 45 47 L 57 47 L 57 52 L 45 52 L 45 65 L 40 65 Z"
+    fill="url(#mainGrad)"
+    filter="url(#softGlow)"
+  />
+  
+  <!-- Accent dots forming a pattern -->
+  <circle cx="65" cy="35" r="2.5" fill="url(#accentGrad)" opacity="0.8" />
+  <circle cx="68" cy="50" r="2.5" fill="url(#accentGrad)" opacity="0.8" />
+  <circle cx="65" cy="65" r="2.5" fill="url(#accentGrad)" opacity="0.8" />
+  <circle cx="35" cy="35" r="2.5" fill="url(#accentGrad)" opacity="0.8" />
+  <circle cx="32" cy="50" r="2.5" fill="url(#accentGrad)" opacity="0.8" />
+  <circle cx="35" cy="65" r="2.5" fill="url(#accentGrad)" opacity="0.8" />
+  
+  <!-- Corner accents for modern look -->
+  <path d="M 20 20 L 30 20 L 30 22 L 22 22 L 22 30 L 20 30 Z" fill="url(#mainGrad)" opacity="0.6" />
+  <path d="M 80 20 L 80 30 L 78 30 L 78 22 L 70 22 L 70 20 Z" fill="url(#mainGrad)" opacity="0.6" />
+  <path d="M 20 80 L 20 70 L 22 70 L 22 78 L 30 78 L 30 80 Z" fill="url(#mainGrad)" opacity="0.6" />
+  <path d="M 80 80 L 70 80 L 70 78 L 78 78 L 78 70 L 80 70 Z" fill="url(#mainGrad)" opacity="0.6" />
+</svg>

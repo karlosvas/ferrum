@@ -1,0 +1,50 @@
+---
+import GlassesIcon from "@/components/icons/GlassesIcon.astro";
+import GlobeIcon from "@/components/icons/GlobeIcon.astro";
+import LayersIcon from "@/components/icons/LayersIcon.astro";
+import ZapIcon from "./icons/ZapIcon.astro";
+
+const sections = [
+  {
+    title: "Realidad Virtual",
+    description: "Explora tejidos como nunca antes.",
+    svg: GlassesIcon,
+  },
+  {
+    title: "Interfaz Intuitiva Navegación sencilla diseñada para estudiantes y profesionales.",
+    description: "Encuentra lo que necesitas rápidamente.",
+    svg: GlobeIcon,
+  },
+  {
+    title: "Actualizaciones Regulares Nuevas características y modelos añadidos frecuentemente.",
+    description: "Mantente al día con las últimas innovaciones.",
+    svg: LayersIcon,
+  },
+  {
+    title: "Herramientas de Anotación Añade notas y etiquetas a los modelos para un estudio personalizado.",
+    description: "Facilita el aprendizaje y la revisión.",
+    svg: ZapIcon,
+  },
+];
+---
+
+<section class="my-20 flex flex-col justify-center items-center align-middle">
+  <h2 class="text-2xl font-bold">Tecnología de Vanguardia para Visualización Anatómica</h2>
+  <p class="text-muted text-center text-pretty">
+    Ferrum combina gráficos 3D de última generación con precisión científica <br />para ofrecer una experiencia de
+    aprendizaje inmersiva.
+  </p>
+  <div class="flex flex-wrap gap-5 mt-10 justify-center">
+    {
+      sections.map((section) => (
+        <div class="w-1/3 overflow-hidden bg-gray-900 p-5 rounded-lg">
+          <div class="h-10 w-10 bg-accent bg-linear-to-r from-orange-600 to-accent rounded-md flex justify-center items-center mb-4">
+            <section.svg height="30px" width="30px" />
+          </div>
+          <h2>{section.title}</h2>
+          <p class="text-muted text-pretty">{section.description}</p>
+        </div>
+      ))
+    }
+  </div>
+</section>

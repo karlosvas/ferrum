@@ -1,0 +1,13 @@
+<div
+  class="hover:bg-gray-800 p-5 rounded-md space-y-5 hover:transform hover:scale-105 transition-all duration-300 cursor-pointer"
+>
+  <div class="flex space-x-3">
+    <div class="h-10 w-10 bg-linear-to-r from-orange-600 to-accent rounded-md flex justify-center items-center">
+      <slot />
+    </div>
+    <slot name="description" />
+  </div>
+  <button class="bg-linear-to-r from-orange-600 to-accent rounded-md p-1 w-full">
+    <slot name="button" />
+  </button>
+</div>
