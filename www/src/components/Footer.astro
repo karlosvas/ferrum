@@ -1,0 +1,92 @@
+---
+import FerrumLogo from "@/assets/icons/FerrumLogo.astro";
+import GitHubIcon from "@/assets/icons/GitHubIcon.astro";
+import YoutubeIcon from "@/assets/icons/YoutubeIcon.astro";
+---
+
+<footer class="bg-secondary/90 p-10 lg:px-40 h-auto">
+  <div class="max-w-6xl m-auto">
+    <div class="flex justify-between pb-10 items-center">
+      <FerrumLogo height="80" width="80" />
+      <nav>
+        <ul class="flex space-x-5">
+          <li>
+            <a href=""
+              ><YoutubeIcon
+                height="20"
+                width="20"
+                class="text-muted hover:text-primary-light transition-all duration-200"
+              /></a
+            >
+          </li>
+          <li class="hover:text-primary-light transition-all duration-200">
+            <a href=""><GitHubIcon height="20" width="20" /></a>
+          </li>
+        </ul>
+      </nav>
+    </div>
+    <hr />
+    <div>
+      <div class="grid grid-cols-3">
+        <div class="py-5">
+          <h1 class="font-bold text-xl text-white py-5">Proyecto</h1>
+          <ul class="text-muted space-y-2">
+            <li class="hover:text-primary-light transition-all duration-200"><a href="#hero">Inicio</a></li>
+            <li class="hover:text-primary-light transition-all duration-200"><a href="#features">Características</a></li>
+            <li class="hover:text-primary-light transition-all duration-200"><a href="#vr">Realidad Virtual</a></li>
+            <li class="hover:text-primary-light transition-all duration-200"><a href="#download">Descargar</a></li>
+          </ul>
+        </div>
+        <div class="py-5">
+          <h1 class="font-bold text-xl text-white py-5">Documentación</h1>
+          <ul class="text-muted space-y-2">
+            <li class="hover:text-primary-light transition-all duration-200"><a href="">Guía de Usuario</a></li>
+            <li class="hover:text-primary-light transition-all duration-200"><a href="">API Reference</a></li>
+            <li class="hover:text-primary-light transition-all duration-200"><a href="">Arquitectura Técnica</a></li>
+            <li class="hover:text-primary-light transition-all duration-200"><a href="">FAQ</a></li>
+          </ul>
+        </div>
+        <div class="py-5">
+          <h1 class="font-bold text-xl text-white py-5">Desarrollo</h1>
+          <ul class="text-muted space-y-2">
+            <li class="hover:text-primary-light transition-all duration-200"><a href="">GitHub Repository</a></li>
+            <li class="hover:text-primary-light transition-all duration-200"><a href="">Contribuir</a></li>
+            <li class="hover:text-primary-light transition-all duration-200"><a href="">Roadmap</a></li>
+            <li class="hover:text-primary-light transition-all duration-200"><a href="">Changelog</a></li>
+          </ul>
+        </div>
+        <div class="py-5">
+          <h1 class="font-bold text-xl text-white py-5">Recursos</h1>
+          <ul class="text-muted space-y-2">
+            <li class="hover:text-primary-light transition-all duration-200"><a href="">Modelos Anatómicos</a></li>
+            <li class="hover:text-primary-light transition-all duration-200"><a href="">Tutoriales</a></li>
+            <li class="hover:text-primary-light transition-all duration-200"><a href="">Casos de Uso</a></li>
+            <li class="hover:text-primary-light transition-all duration-200"><a href="">Blog Técnico</a></li>
+          </ul>
+        </div>
+        <div class="py-5">
+          <h1 class="font-bold text-xl text-white py-5">Comunidad</h1>
+          <ul class="text-muted space-y-2">
+            <li class="hover:text-primary-light transition-all duration-200"><a href="">Discord</a></li>
+            <li class="hover:text-primary-light transition-all duration-200"><a href="">Foro</a></li>
+            <li class="hover:text-primary-light transition-all duration-200"><a href="">Soporte</a></li>
+            <li class="hover:text-primary-light transition-all duration-200"><a href="">Contacto</a></li>
+          </ul>
+        </div>
+        <div class="py-5">
+          <h1 class="font-bold text-xl text-white py-5">Legal</h1>
+          <ul class="text-muted space-y-2">
+            <li class="hover:text-primary-light transition-all duration-200"><a href="">Licencia MIT</a></li>
+            <li class="hover:text-primary-light transition-all duration-200"><a href="">Privacidad</a></li>
+            <li class="hover:text-primary-light transition-all duration-200"><a href="">Términos de Uso</a></li>
+            <li class="hover:text-primary-light transition-all duration-200"><a href="">Créditos</a></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="mt-10 pt-6 border-t border-white/10 text-center text-muted text-sm">
+      <p>© 2025 Ferrum - Motor de Rendering 3D para Visualización Anatómica Educativa</p>
+      <p class="mt-2">Desarrollado en Rust con wgpu | Proyecto de Fin de Grado</p>
+    </div>
+  </div>
+</footer>

@@ -1,0 +1,12 @@
+---
+import DownloadIcon from "@/assets/icons/DownloadIcon.astro";
+---
+
+<button
+  class="relative bg-linear-to-r from-primary to-primary-light w-full flex justify-center align-middle rounded-2xl py-1 mt-10 hover:opacity-90 hover:translate-y-0.5 cursor-pointer transition-all duration-200"
+>
+  <div class="absolute inset-0 opacity-20 bottom-[-20px] -z-10">
+    <div class="absolute bottom-0 left-0 w-full h-20 bg-primary blur-[20px] rounded-4xl"></div>
+  </div>
+  <slot />
+</button>

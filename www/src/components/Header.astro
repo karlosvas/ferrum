@@ -1,0 +1,41 @@
+---
+import FerrumLogo from "@/assets/icons/FerrumLogo.astro";
+import GitHubIcon from "@/assets/icons/GitHubIcon.astro";
+---
+
+<header
+  class="flex justify-between p-5 lg:px-20 items-center bg-secondary/90 opacity-95 border-gray-700 border-b border-1 sticky z-50"
+>
+  <a href="/" class="cursor-pointer">
+    <FerrumLogo height="80" width="80" />
+  </a>
+  <nav>
+    <ul class="flex space-x-5 lg:space-x-10 cursor-pointer text-md lg:text-xl">
+      <li class="hover:text-primary-light transition-all duration-200 relative group text-md">
+        Home
+        <span
+          class="absolute bottom-0 left-0 w-0 h-0.5 bg-linear-to-r from-accent to-primary-light group-hover:w-full transition-all duration-200"
+        ></span>
+      </li>
+      <li class="hover:text-primary-light transition-all duration-200 relative group text-md">
+        Downloads
+        <span
+          class="absolute bottom-0 left-0 w-0 h-0.5 bg-linear-to-r from-accent to-primary-light group-hover:w-full transition-all duration-200"
+        ></span>
+      </li>
+      <li class="hover:text-primary-light transition-all duration-200 relative group text-md">
+        Demo
+        <span
+          class="absolute bottom-0 left-0 w-0 h-0.5 bg-linear-to-r from-accent to-primary-light group-hover:w-full transition-all duration-200"
+        ></span>
+      </li>
+    </ul>
+  </nav>
+  <a
+    href="https://github.com/karlosvas"
+    target="_blank"
+    class="cursor-pointer hover:text-primary-light transition-all duration-200"
+  >
+    <GitHubIcon height="30" width="30" />
+  </a>
+</header>

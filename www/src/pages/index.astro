@@ -1,0 +1,71 @@
+---
+import Header from "@/components/Header.astro";
+import Footer from "@/components/Footer.astro";
+import Layout from "../layouts/Layout.astro";
+import HeroSection from "@/components/HeroSection.astro";
+import BoxIcon from "@/assets/icons/BoxIcon.astro";
+import GlassesIcon from "@/assets/icons/GlassesIcon.astro";
+import GlobeIcon from "@/assets/icons/GlobeIcon.astro";
+import LayersIcon from "@/assets/icons/LayersIcon.astro";
+import MonitorIcon from "@/assets/icons/MonitorIcon.astro";
+import ZapIcon from "@/assets/icons/ZapIcon.astro";
+import Features from "@/components/Features.astro";
+import GradientEffect from "@/components/GradientEffect.astro";
+import Requierments from "@/components/Requierments.astro";
+import Download from "@/components/Download.astro";
+import Demo from "@/components/Demo.astro";
+import VirtualReality from "@/components/VirtualReality.astro";
+import "@/styles/global.css";
+
+const dataSection = [
+  {
+    title: "Características Arquitectura Técnica para Visualización Multiescala",
+    description:
+      "Ferrum combina rendering PBR (Physically Based Rendering) con precisión anatómica para generar una experiencia de aprendizaje que reproduce la profundidad espacial que desarrollan profesionales médicos.",
+    svg: BoxIcon,
+  },
+  {
+    title: "Experiencia Inmersiva de Realidad Virtual",
+    description:
+      "Sumérgete en un entorno tridimensional interactivo que facilita la comprensión espacial de estructuras anatómicas complejas.",
+    svg: GlassesIcon,
+  },
+  {
+    title: "Modelos Anatómicos Científicamente Validados",
+    description:
+      "Accede a representaciones precisas y detalladas de órganos y tejidos, desarrolladas en colaboración con expertos médicos.",
+    svg: GlobeIcon,
+  },
+  {
+    title: "Multiplataforma y Accesible",
+    description: "Disponible en Windows, macOS y Linux, con una versión WebAssembly para acceso sin instalación.",
+    svg: LayersIcon,
+  },
+  {
+    title: "Navegación Continua entre Escalas Anatómicas",
+    description: "Explora desde vistas completas de órganos hasta detalles celulares con transiciones fluidas.",
+    svg: MonitorIcon,
+  },
+  {
+    title: "Rendering en Tiempo Real Optimizado",
+    description:
+      "Disfruta de una experiencia visual fluida con un motor gráfico construido en Rust y wgpu, garantizando 60 FPS.",
+    svg: ZapIcon,
+  },
+];
+---
+
+<Layout>
+  <Header />
+  <main class="h-fit mt-52 px-5 md:px-20 max-w-[90%] lg:max-w-[70%] 2xl:max-w-[50%] m-auto">
+    <GradientEffect />
+    <HeroSection />
+    <Features dataSection={dataSection} />
+    <VirtualReality />
+    <Download />
+    <Requierments />
+    <Demo />
+  </main>
+
+  <Footer />
+</Layout>
