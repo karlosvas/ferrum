@@ -6,6 +6,11 @@ pub struct State {
     pub queue: wgpu::Queue,
     pub config: wgpu::SurfaceConfiguration,
     pub is_surface_configuration: bool,
+    pub render_pipeline: wgpu::RenderPipeline,
+    pub vertex_buffer: wgpu::Buffer,
+    pub num_vertex: u32,
+    pub index_buffer: wgpu::Buffer,
+    pub num_index: u32,
     pub window: Arc<Window>,
 }
 
@@ -13,4 +18,11 @@ pub struct App {
     pub state: Option<State>,
     #[cfg(target_arch = "wasm32")]
     pub proxy: Option<EventLoopProxy<State>>,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct Vertex {
+    pub position: [f32; 3],
+    pub color: [f32; 3],
 }
