@@ -1,0 +1,12 @@
+# 1. Comportamiento por defecto: detectar texto y forzar LF
+* text=auto eol=lf
+
+# Asegurar que archivos de código siempre sean LF
+*.rs     text eol=lf
+*.toml   text eol=lf
+*.wgsl   text eol=lf
+
+# Evitar que Git toque archivos binarios
+*.png    binary
+*.jpg    binary
+*.ico    binary

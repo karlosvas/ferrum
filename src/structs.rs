@@ -13,6 +13,11 @@ pub struct State {
     pub num_index: u32,
     pub diffuse_bind_group: BindGroup,
     pub diffuse_texture: texture::Texture,
+    pub camera: Camera,
+    pub camera_uniform: CameraUniform,
+    pub camera_buffer: wgpu::Buffer,
+    pub camera_bind_group: wgpu::BindGroup,
+    pub camera_controller: CameraController,
     pub window: Arc<Window>,
 }
 
@@ -34,4 +39,28 @@ pub struct App {
 pub struct Vertex {
     pub position: [f32; 3],
     pub text_cords: [f32; 2],
+}
+
+pub struct Camera {
+    pub eye: cgmath::Point3<f32>,
+    pub target: cgmath::Point3<f32>,
+    pub up: cgmath::Vector3<f32>,
+    pub aspect: f32,
+    pub fovy: f32,
+    pub znear: f32,
+    pub zfar: f32,
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct CameraUniform{
+    pub view_proj : [[f32; 4]; 4],
+}
+
+pub struct CameraController {
+    pub speed: f32,
+    pub is_forward_pressed: bool,
+    pub is_backward_pressed: bool,
+    pub if_left_pressed: bool,
+    pub if_right_pressed: bool,
 }
