@@ -488,9 +488,12 @@ dependencies = [
  "bytemuck",
  "cgmath",
  "env_logger",
+ "fs_extra",
+ "glob",
  "image",
  "log",
  "pollster",
+ "tobj",
  "wgpu",
  "winit",
 ]
@@ -551,6 +554,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "aa9a19cbb55df58761df49b23516a86d432839add4af60fc256da840f66ed35b"
 
 [[package]]
+name = "fs_extra"
+version = "1.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "42703706b716c37f96a77aea830392ad231f44c9e9a67872fa5548707e11b11c"
+
+[[package]]
 name = "gethostname"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -582,6 +591,12 @@ dependencies = [
  "log",
  "xml-rs",
 ]
+
+[[package]]
+name = "glob"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280"
 
 [[package]]
 name = "glow"
@@ -712,6 +727,7 @@ dependencies = [
  "bytemuck",
  "byteorder",
  "color_quant",
+ "jpeg-decoder",
  "num-traits",
  "png",
 ]
@@ -768,6 +784,12 @@ dependencies = [
  "getrandom",
  "libc",
 ]
+
+[[package]]
+name = "jpeg-decoder"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "00810f1d8b74be64b13dbf3db89ac67740615d6c891f0e7b6179326533011a07"
 
 [[package]]
 name = "js-sys"
@@ -1761,6 +1783,12 @@ dependencies = [
  "bytemuck",
  "strict-num",
 ]
+
+[[package]]
+name = "tobj"
+version = "3.2.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "57381207291289bad19de63acd3fbf5948ff99b2868116c367b7224c37d55f90"
 
 [[package]]
 name = "toml_datetime"

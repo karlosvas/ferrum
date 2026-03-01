@@ -1,14 +1,17 @@
-mod structs;
-mod texture;
 mod camera;
 mod geometry;
+mod models;
+mod resources;
+mod structs;
+mod texture;
 
-use winit::{event::KeyEvent, keyboard::{KeyCode, PhysicalKey}};
 #[cfg(target_arch = "wasm32")]
 use winit::event_loop::EventLoop;
 
-use crate::{geometry::VERTICES, structs::{Camera, CameraController, CameraUniform, Vertex}};
-
+use crate::{
+    models::Vertex,
+    structs::{Camera, CameraController, CameraUniform, ModelVertex},
+};
 use {
     std::sync::Arc,
     structs::{App, State},
@@ -21,8 +24,10 @@ use {
     winit::{
         application::ApplicationHandler,
         dpi::PhysicalSize,
+        event::KeyEvent,
         event::WindowEvent,
         event_loop::{ActiveEventLoop, EventLoop},
+        keyboard::{KeyCode, PhysicalKey},
         window::Window,
         window::{WindowAttributes, WindowId},
     },
@@ -134,8 +139,8 @@ impl State {
 
         // CÁMARA
         let camera: Camera = Camera {
-            eye: (0.0, 1.0, 2.0).into(),
-            target: (0.0, 0.0, 0.0).into(),
+            eye: (0.0, 4.0, 10.0).into(),
+            target: (0.0, 3.0, 0.0).into(),
             up: cgmath::Vector3::unit_y(),
             aspect: config.width as f32 / config.height as f32,
             fovy: 45.0,
@@ -151,29 +156,28 @@ impl State {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
-        let camera_bind_group_layout: BindGroupLayout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("camera_bind_group_layout"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count : None
-            }],
-        });
+        let camera_bind_group_layout: BindGroupLayout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("camera_bind_group_layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            });
 
         let camera_bind_group: BindGroup = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("camera_bind_group"),
             layout: &camera_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: camera_buffer.as_entire_binding()
-                }
-            ],
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: camera_buffer.as_entire_binding(),
+            }],
         });
 
         let pipeline_render_layout: PipelineLayout =
@@ -191,7 +195,8 @@ impl State {
                     module: &shader,
                     entry_point: Some("vs_main"),
                     compilation_options: wgpu::PipelineCompilationOptions::default(),
-                    buffers: &[Vertex::desc()],
+                    // buffers: &[Vertex::desc()],
+                    buffers: &[ModelVertex::desc()],
                 },
                 primitive: wgpu::PrimitiveState {
                     topology: wgpu::PrimitiveTopology::TriangleList,
@@ -223,22 +228,27 @@ impl State {
                 cache: None,
             });
 
-        let vertex_buffer: Buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("vertex_buffer"),
-            contents: bytemuck::cast_slice(VERTICES),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
+        // let vertex_buffer: Buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        //     label: Some("vertex_buffer"),
+        //     contents: bytemuck::cast_slice(VERTICES),
+        //     usage: wgpu::BufferUsages::VERTEX,
+        // });
 
-        let num_vertex: u32 = VERTICES.len() as u32;
+        // let num_vertex: u32 = VERTICES.len() as u32;
 
-        let index_buffer: Buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("index_buffer"),
-            contents: bytemuck::cast_slice(INDICES),
-            usage: wgpu::BufferUsages::INDEX,
-        });
+        // let index_buffer: Buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        //     label: Some("index_buffer"),
+        //     contents: bytemuck::cast_slice(INDICES),
+        //     usage: wgpu::BufferUsages::INDEX,
+        // });
 
-        let num_index: u32 = INDICES.len() as u32;
-        let camera_controller: CameraController= CameraController::new(0.01);
+        // let num_index: u32 = INDICES.len() as u32;
+        let camera_controller: CameraController = CameraController::new(0.01);
+
+        let obj_model: structs::Model =
+            resources::load_model("plant.obj", &device, &queue, &texture_bind_group_layout)
+                .await
+                .unwrap();
 
         Ok(Self {
             surface,
@@ -247,10 +257,10 @@ impl State {
             config,
             is_surface_configuration: false,
             render_pipeline,
-            vertex_buffer,
-            num_vertex,
-            index_buffer,
-            num_index,
+            // vertex_buffer,
+            // num_vertex,
+            // index_buffer,
+            // num_index,
             diffuse_bind_group,
             diffuse_texture,
             camera,
@@ -258,6 +268,7 @@ impl State {
             camera_buffer,
             camera_bind_group,
             camera_controller,
+            obj_model,
             window,
         })
     }
@@ -311,11 +322,14 @@ impl State {
                 });
 
             render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
-            render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
-            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-            render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-            render_pass.draw_indexed(0..self.num_index, 0, 0..1);
+            // render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
+            // render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
+            // render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+            // render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+            // render_pass.draw_indexed(0..self.num_index, 0, 0..1);
+
+            use models::DrawModel;
+            render_pass.draw_model(&self.obj_model, &self.camera_bind_group);
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));
@@ -332,10 +346,14 @@ impl State {
         }
     }
 
-    pub fn update(&mut self){
+    pub fn update(&mut self) {
         self.camera_controller.update_camera(&mut self.camera);
         self.camera_uniform.update_view_proj(&self.camera);
-        self.queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(&[self.camera_uniform]));
+        self.queue.write_buffer(
+            &self.camera_buffer,
+            0,
+            bytemuck::cast_slice(&[self.camera_uniform]),
+        );
     }
 }
 
@@ -385,12 +403,13 @@ impl ApplicationHandler<State> for App {
             }
             WindowEvent::Resized(size) => state.resize(size.height, size.width),
             WindowEvent::KeyboardInput {
-                event: KeyEvent {
-                    physical_key: PhysicalKey::Code(code),
-                    state: key_state,
-                    ..
-                },
-                 .. 
+                event:
+                    KeyEvent {
+                        physical_key: PhysicalKey::Code(code),
+                        state: key_state,
+                        ..
+                    },
+                ..
             } => state.handle_key(event_loop, code, key_state.is_pressed()),
             _ => {}
         }

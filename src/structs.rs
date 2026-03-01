@@ -7,10 +7,10 @@ pub struct State {
     pub config: wgpu::SurfaceConfiguration,
     pub is_surface_configuration: bool,
     pub render_pipeline: wgpu::RenderPipeline,
-    pub vertex_buffer: wgpu::Buffer,
-    pub num_vertex: u32,
-    pub index_buffer: wgpu::Buffer,
-    pub num_index: u32,
+    // pub vertex_buffer: wgpu::Buffer,
+    // pub num_vertex: u32,
+    // pub index_buffer: wgpu::Buffer,
+    // pub num_index: u32,
     pub diffuse_bind_group: BindGroup,
     pub diffuse_texture: texture::Texture,
     pub camera: Camera,
@@ -18,6 +18,7 @@ pub struct State {
     pub camera_buffer: wgpu::Buffer,
     pub camera_bind_group: wgpu::BindGroup,
     pub camera_controller: CameraController,
+    pub obj_model: crate::structs::Model,
     pub window: Arc<Window>,
 }
 
@@ -53,8 +54,8 @@ pub struct Camera {
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct CameraUniform{
-    pub view_proj : [[f32; 4]; 4],
+pub struct CameraUniform {
+    pub view_proj: [[f32; 4]; 4],
 }
 
 pub struct CameraController {
@@ -63,4 +64,31 @@ pub struct CameraController {
     pub is_backward_pressed: bool,
     pub if_left_pressed: bool,
     pub if_right_pressed: bool,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, bytemuck::Zeroable, bytemuck::Pod)]
+pub struct ModelVertex {
+    pub position: [f32; 3],
+    pub text_cords: [f32; 2],
+    pub normal: [f32; 3],
+}
+
+pub struct Mesh {
+    pub name: String,
+    pub vertex_buffer: wgpu::Buffer,
+    pub index_buffer: wgpu::Buffer,
+    pub material: usize,
+    pub indices: u32,
+}
+
+pub struct Material {
+    pub name: String,
+    pub diffuse_texture: texture::Texture,
+    pub bind_group: wgpu::BindGroup,
+}
+
+pub struct Model {
+    pub meshes: Vec<Mesh>,
+    pub materials: Vec<Material>,
 }
