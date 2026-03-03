@@ -1,4 +1,7 @@
-use {crate::texture, std::sync::Arc, wgpu::BindGroup, winit::window::Window};
+#[cfg(target_arch = "wasm32")]
+use winit::event_loop::EventLoopProxy;
+
+use {crate::texture, std::sync::Arc, winit::window::Window};
 
 pub struct State {
     pub surface: wgpu::Surface<'static>,
@@ -7,12 +10,6 @@ pub struct State {
     pub config: wgpu::SurfaceConfiguration,
     pub is_surface_configuration: bool,
     pub render_pipeline: wgpu::RenderPipeline,
-    // pub vertex_buffer: wgpu::Buffer,
-    // pub num_vertex: u32,
-    // pub index_buffer: wgpu::Buffer,
-    // pub num_index: u32,
-    pub diffuse_bind_group: BindGroup,
-    pub diffuse_texture: texture::Texture,
     pub camera: Camera,
     pub camera_uniform: CameraUniform,
     pub camera_buffer: wgpu::Buffer,

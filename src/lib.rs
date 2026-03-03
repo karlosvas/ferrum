@@ -5,21 +5,25 @@ mod resources;
 mod structs;
 mod texture;
 
+use std::num::NonZero;
+
 #[cfg(target_arch = "wasm32")]
-use winit::event_loop::EventLoop;
+use wasm_bindgen::prelude::*;
+#[cfg(target_arch = "wasm32")]
+use winit::event_loop::EventLoopProxy;
 
 use crate::{
     models::Vertex,
-    structs::{Camera, CameraController, CameraUniform, ModelVertex},
+    structs::{Camera, ModelVertex},
 };
 use {
+    image::ImageBuffer,
     std::sync::Arc,
     structs::{App, State},
     wgpu::{
-        Adapter, BindGroup, BindGroupLayout, Buffer, CommandEncoder, Device, Instance,
-        PipelineLayout, Queue, RenderPass, RenderPipeline, ShaderModule, Surface,
-        SurfaceCapabilities, SurfaceTexture, TextureFormat, TextureView, util::DeviceExt,
-        wgt::SurfaceConfiguration,
+        Adapter, BindGroupLayout, CommandEncoder, Device, Instance, PipelineLayout, Queue,
+        RenderPass, RenderPipeline, ShaderModule, Surface, SurfaceCapabilities, SurfaceTexture,
+        TextureFormat, TextureView, wgt::SurfaceConfiguration,
     },
     winit::{
         application::ApplicationHandler,
@@ -32,8 +36,6 @@ use {
         window::{WindowAttributes, WindowId},
     },
 };
-
-const INDICES: &[u16] = &[0, 1, 2];
 
 impl State {
     pub async fn new(window: Arc<Window>) -> anyhow::Result<Self> {
@@ -81,7 +83,7 @@ impl State {
             .copied()
             .unwrap_or(surface_caps.formats[0]);
 
-        // Definir como se renderiz da (swapchain)
+        // Definir como se renderiza añadiendo uan configuración (swapchain)
         let config: SurfaceConfiguration<Vec<TextureFormat>> = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,
@@ -93,10 +95,7 @@ impl State {
             view_formats: vec![],
         };
 
-        let diffuse_bytes: &[u8] = include_bytes!("planta.png");
-        let diffuse_texture: texture::Texture =
-            texture::Texture::from_bytes(&device, &queue, diffuse_bytes, "planta.png").unwrap();
-
+        // Bind group de texturas
         let texture_bind_group_layout: BindGroupLayout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("texture_bind_group_layout"),
@@ -120,24 +119,10 @@ impl State {
                 ],
             });
 
-        let diffuse_bind_group: BindGroup = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("diffuse_bind_group"),
-            layout: &texture_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&diffuse_texture.view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&diffuse_texture.sampler),
-                },
-            ],
-        });
-
+        // Obtenemos el shader que gestiona como se deve pintar en pantalla nuestros vértices
         let shader: ShaderModule = device.create_shader_module(wgpu::include_wgsl!("shaders.wgsl"));
 
-        // CÁMARA
+        // Configuracion inicial de la cámara
         let camera: Camera = Camera {
             eye: (0.0, 4.0, 10.0).into(),
             target: (0.0, 3.0, 0.0).into(),
@@ -147,14 +132,6 @@ impl State {
             znear: 0.1,
             zfar: 100.0,
         };
-        let mut camera_uniform: CameraUniform = CameraUniform::new();
-        camera_uniform.update_view_proj(&camera);
-
-        let camera_buffer: Buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("camera_buffer"),
-            contents: bytemuck::cast_slice(&[camera_uniform]),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
 
         let camera_bind_group_layout: BindGroupLayout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -171,21 +148,22 @@ impl State {
                 }],
             });
 
-        let camera_bind_group: BindGroup = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("camera_bind_group"),
-            layout: &camera_bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: camera_buffer.as_entire_binding(),
-            }],
-        });
+        let (camera_bind_group, camera_buffer, camera_controller, camera_uniform) =
+            Camera::build_camera_setup(&camera, &device, &camera_bind_group_layout);
 
+        // Pípeline gráfico el orquestador, cadena de pasos que le cie a la GPU como convertir datos a pixeles en pantalla
         let pipeline_render_layout: PipelineLayout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("pipeline_render_layout"),
                 bind_group_layouts: &[&texture_bind_group_layout, &camera_bind_group_layout],
-                push_constant_ranges: &[],
+                immediate_size: 0,
             });
+
+        // Carga del modelo 3D, .obj dentro de la carpeta /res
+        let obj_model: structs::Model =
+            resources::load_model("plant.obj", &device, &queue, &texture_bind_group_layout)
+                .await
+                .unwrap();
 
         let render_pipeline: RenderPipeline =
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -214,6 +192,7 @@ impl State {
                     mask: !0,
                     alpha_to_coverage_enabled: false,
                 },
+                // Fragment shader
                 fragment: Some(wgpu::FragmentState {
                     module: &shader,
                     entry_point: Some("fs_main"),
@@ -224,31 +203,9 @@ impl State {
                         write_mask: wgpu::ColorWrites::ALL,
                     })],
                 }),
-                multiview: None,
                 cache: None,
+                multiview_mask: None,
             });
-
-        // let vertex_buffer: Buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        //     label: Some("vertex_buffer"),
-        //     contents: bytemuck::cast_slice(VERTICES),
-        //     usage: wgpu::BufferUsages::VERTEX,
-        // });
-
-        // let num_vertex: u32 = VERTICES.len() as u32;
-
-        // let index_buffer: Buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        //     label: Some("index_buffer"),
-        //     contents: bytemuck::cast_slice(INDICES),
-        //     usage: wgpu::BufferUsages::INDEX,
-        // });
-
-        // let num_index: u32 = INDICES.len() as u32;
-        let camera_controller: CameraController = CameraController::new(0.01);
-
-        let obj_model: structs::Model =
-            resources::load_model("plant.obj", &device, &queue, &texture_bind_group_layout)
-                .await
-                .unwrap();
 
         Ok(Self {
             surface,
@@ -257,12 +214,6 @@ impl State {
             config,
             is_surface_configuration: false,
             render_pipeline,
-            // vertex_buffer,
-            // num_vertex,
-            // index_buffer,
-            // num_index,
-            diffuse_bind_group,
-            diffuse_texture,
             camera,
             camera_uniform,
             camera_buffer,
@@ -319,6 +270,7 @@ impl State {
                     depth_stencil_attachment: None,
                     timestamp_writes: None,
                     occlusion_query_set: None,
+                    multiview_mask: None,
                 });
 
             render_pass.set_pipeline(&self.render_pipeline);
@@ -358,23 +310,73 @@ impl State {
 }
 
 impl App {
-    pub fn new(#[cfg(target_arch = "wasm32")] event_loop: EventLoop<State>) -> Self {
-        #[cfg(target_arch = "wasm32")]
-        let proxy = event_loop.create_proxy();
-
+    pub fn new(#[cfg(target_arch = "wasm32")] proxy: EventLoopProxy<State>) -> Self {
         Self {
             state: None,
             #[cfg(target_arch = "wasm32")]
-            proxy,
+            proxy: Some(proxy),
         }
     }
 }
 
 impl ApplicationHandler<State> for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        let window_attributes: WindowAttributes = Window::default_attributes();
+        use winit::window::Icon;
+        let icon: Icon = {
+            let bytes: &[u8] = include_bytes!("../assets/logo.ico");
+            let img: ImageBuffer<image::Rgba<u8>, Vec<u8>> =
+                image::load_from_memory(bytes).unwrap().to_rgba8();
+            let (w, h): (u32, u32) = img.dimensions();
+            Icon::from_rgba(img.into_raw(), w, h)
+        }
+        .unwrap();
+
+        #[allow(unused_mut)]
+        let mut window_attributes: WindowAttributes =
+            Window::default_attributes().with_title("Ferrum");
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            window_attributes = window_attributes.with_window_icon(Some(icon.clone()));
+        }
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            use wasm_bindgen::JsCast;
+            use winit::{platform::web::WindowAttributesExtWebSys, window};
+
+            const CANVAS_ID: &str = "canvas";
+            let window = wgpu::web_sys::window().unwrap_throw();
+            let document = window.document().unwrap_throw();
+
+            let canvas = document.get_element_by_id(CANVAS_ID).unwrap_throw();
+            let html_canvas = canvas.unchecked_into();
+            window_attributes = window_attributes.with_canvas(Some(html_canvas));
+        }
+
         let window: Arc<Window> = Arc::new(event_loop.create_window(window_attributes).unwrap());
-        self.state = Some(pollster::block_on(State::new(window)).unwrap());
+
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            self.state = Some(pollster::block_on(State::new(window)).unwrap());
+        }
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            if let Some(proxy) = self.proxy.take() {
+                wasm_bindgen_futures::spawn_local(async move {
+                    assert!(
+                        proxy
+                            .send_event(
+                                State::new(window)
+                                    .await
+                                    .expect("Unable te creeate canvas!!")
+                            )
+                            .is_ok()
+                    )
+                })
+            }
+        }
     }
 
     fn window_event(
@@ -415,7 +417,16 @@ impl ApplicationHandler<State> for App {
         }
     }
 
-    fn user_event(&mut self, event_loop: &ActiveEventLoop, event: State) {
+    #[allow(unused_mut)]
+    fn user_event(&mut self, _event_loop: &ActiveEventLoop, mut event: State) {
+        #[cfg(target_arch = "wasm32")]
+        {
+            event.window.request_redraw();
+            event.resize(
+                event.window.inner_size().width,
+                event.window.inner_size().height,
+            );
+        }
         self.state = Some(event)
     }
 }
@@ -425,10 +436,27 @@ pub fn run() -> anyhow::Result<()> {
     {
         env_logger::init();
     }
+    #[cfg(target_arch = "wasm32")]
+    {
+        console_log::init_with_level(log::Level::Info).unwrap_throw();
+    }
 
     let event_loop: EventLoop<State> = EventLoop::<State>::with_user_event().build()?;
-    let mut app: App = App::new();
-    event_loop.run_app(&mut app);
+    let mut app: App = App::new(
+        #[cfg(target_arch = "wasm32")]
+        {
+            event_loop.create_proxy()
+        },
+    );
+    event_loop.run_app(&mut app)?;
 
+    Ok(())
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen(start)]
+pub fn run_reb() -> Result<(), wasm_bindgen::JsValue> {
+    console_error_panic_hook::set_once();
+    run().unwrap_throw();
     Ok(())
 }

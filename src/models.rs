@@ -1,6 +1,4 @@
-// Forma 3 (Modelo)
-use crate::structs::ModelVertex;
-use crate::{models, structs};
+use crate::{structs, structs::ModelVertex};
 
 pub trait Vertex {
     fn desc() -> wgpu::VertexBufferLayout<'static>;

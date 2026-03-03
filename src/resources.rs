@@ -64,7 +64,7 @@ pub async fn load_model(
             ..Default::default()
         },
         |mtl_path| async move {
-            println!("Buscando mtl: {}", mtl_path);
+            log::debug!("Buscando mtl: {}", mtl_path);
             let mat_text: String = load_string(&mtl_path).await.unwrap();
             tobj::load_mtl_buf(&mut BufReader::new(Cursor::new(mat_text)))
         },
@@ -75,8 +75,8 @@ pub async fn load_model(
     for m in obj_materials? {
         let diffuse_texture: Texture = match load_texture(&m.diffuse_texture, device, queue).await {
             anyhow::Result::Ok(t) => t,
-            Err((e)) => {
-                println!("WARN: No se ha podido caragr la textura {}, {}", m.name, e);
+            Err(e) => {
+                log::debug!("WARN: No se ha podido caragr la textura {}, {}", m.name, e);
                 panic!()
             }
         };
@@ -121,6 +121,20 @@ pub async fn load_model(
                             normal: [0.0, 0.0, 0.0],
                         }
                     } else {
+                        let normal: [f32; 3] = if m.mesh.normal_indices.is_empty() {
+                            [
+                                m.mesh.normals[i * 3],
+                                m.mesh.normals[i * 3 + 1],
+                                m.mesh.normals[i * 3 + 2],
+                            ]
+                        } else {
+                            let ni: usize = m.mesh.normal_indices[i] as usize;
+                            [
+                                m.mesh.normals[ni * 3],
+                                m.mesh.normals[ni * 3 + 1],
+                                m.mesh.normals[ni * 3 + 2],
+                            ]
+                        };
                         ModelVertex {
                             position: [
                                 m.mesh.positions[i * 3],
@@ -131,26 +145,15 @@ pub async fn load_model(
                                 m.mesh.texcoords[i * 2],
                                 1.0 - m.mesh.texcoords[i * 2 + 1],
                             ],
-                            normal: [
-                                m.mesh.positions[i * 3],
-                                m.mesh.positions[i * 3 + 1],
-                                m.mesh.positions[i * 3 + 2],
-                            ],
+                            normal,
                         }
                     }
                 })
                 .collect::<Vec<_>>();
 
-            // DEBUG
-            println!("Num vertices: {}", vertices.len());
-            println!("Num indices: {}", m.mesh.indices.len());
-            println!("Max index: {}", m.mesh.indices.iter().max().unwrap());
-            if let Some(v) = vertices.first() {
-                println!("Primer vertice: {:?}", v.position);
-            }
-            if let Some(v) = vertices.last() {
-                println!("Ultimo vertice: {:?}", v.position);
-            }
+            log::debug!("Num vertices: {}", vertices.len());
+            log::debug!("Num indices: {}", m.mesh.indices.len());
+            log::debug!("Max index: {}", m.mesh.indices.iter().max().unwrap());
 
             let vertex_buffer: Buffer =
                 device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -176,10 +179,10 @@ pub async fn load_model(
         })
         .collect::<Vec<_>>();
 
-    println!("Num meshes: {}", meshes.len());
-    println!("Num materials: {}", materials.len());
+    log::debug!("Num meshes: {}", meshes.len());
+    log::debug!("Num materials: {}", materials.len());
     for mesh in &meshes {
-        println!("Mesh: {} material_id: {}", mesh.name, mesh.material);
+        log::debug!("Mesh: {} material_id: {}", mesh.name, mesh.material);
     }
     Ok(Model { meshes, materials })
 }
