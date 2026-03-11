@@ -16,6 +16,7 @@ pub struct State {
     pub camera_bind_group: wgpu::BindGroup,
     pub camera_controller: CameraController,
     pub obj_model: crate::structs::Model,
+    pub last_render_time: web_time::Instant,
     pub window: Arc<Window>,
 }
 
@@ -24,13 +25,6 @@ pub struct App {
     #[cfg(target_arch = "wasm32")]
     pub proxy: Option<EventLoopProxy<State>>,
 }
-
-// #[repr(C)]
-// #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-// pub struct Vertex {
-//     pub position: [f32; 3],
-//     pub color: [f32; 3],
-// }
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]

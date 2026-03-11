@@ -47,7 +47,7 @@ impl Camera {
         });
 
         // Controlador de  la cámara
-        let camera_controller: CameraController = CameraController::new(0.01);
+        let camera_controller: CameraController = CameraController::new(4.0);
 
         (bind_group, buffer, camera_controller, uniform)
     }
@@ -99,17 +99,20 @@ impl CameraController {
         }
     }
 
-    pub fn update_camera(&self, camera: &mut Camera) {
+    pub fn update_camera(&self, camera: &mut Camera, dt: web_time::Duration) {
         use cgmath::InnerSpace;
+
+        let dt: f32 = dt.as_secs_f32();
+
         let forward: Vector3<f32> = camera.target - camera.eye;
         let forward_norm: Vector3<f32> = forward.normalize();
         let forward_mag: f32 = forward.magnitude();
 
         if self.is_forward_pressed && forward_mag > self.speed {
-            camera.eye += forward_norm * self.speed;
+            camera.eye += forward_norm * self.speed * dt;
         }
         if self.is_backward_pressed {
-            camera.eye -= forward_norm * self.speed;
+            camera.eye -= forward_norm * self.speed * dt;
         }
 
         let right: Vector3<f32> = forward_norm.cross(camera.up);
@@ -117,11 +120,13 @@ impl CameraController {
         let forward_mag: f32 = forward.magnitude();
 
         if self.if_right_pressed {
-            camera.eye = camera.target - (forward + right * self.speed).normalize() * forward_mag;
+            camera.eye =
+                camera.target - (forward + right * self.speed * dt).normalize() * forward_mag;
         }
 
         if self.if_left_pressed {
-            camera.eye = camera.target - (forward - right * self.speed).normalize() * forward_mag;
+            camera.eye =
+                camera.target - (forward - right * self.speed * dt).normalize() * forward_mag;
         }
     }
 }

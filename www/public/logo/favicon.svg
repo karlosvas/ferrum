@@ -1,0 +1,66 @@
+
+<svg
+  viewBox="0 0 100 100"
+  width="32px"
+  height="32px"
+  fill="none"
+  xmlns="http://www.w3.org/2000/svg"
+>
+  <!-- Background circle for depth -->
+  <circle cx="50" cy="50" r="42" fill="#2D0A0A" opacity="0.15"></circle>
+
+  <!-- Inner ring for framing -->
+  <circle cx="50" cy="50" r="38" fill="none" stroke="#E85D47" stroke-width="0.6" opacity="0.3" stroke-dasharray="3 4"
+  ></circle>
+
+  <!-- Shadow layer for F (offset for depth effect) -->
+  <path
+    d="M 39.5 35.5 L 62 35.5 L 62 41 L 47 41 L 47 47.5 L 58 47.5 L 58 53 L 47 53 L 47 67 L 39.5 67 Z"
+    fill="#6B1410"
+    opacity="0.4"></path>
+
+  <!-- Letter F - main layer with better proportions -->
+  <path d="M 38 34 L 61 34 L 61 40 L 46 40 L 46 46.5 L 57 46.5 L 57 52 L 46 52 L 46 66 L 38 66 Z" fill="#CE422B"></path>
+
+  <!-- Highlight on F for depth -->
+  <path d="M 39 35 L 60 35 L 60 36 L 39 36 Z" fill="#E85D47" opacity="0.7"></path>
+  <path d="M 39 35 L 40 35 L 40 65 L 39 65 Z" fill="#E85D47" opacity="0.6"></path>
+
+  <!-- Decorative orbital dots with size variation -->
+  <circle cx="66" cy="34" r="3" fill="#CE422B" opacity="0.9"></circle>
+  <circle cx="66" cy="34" r="1.8" fill="#E85D47"></circle>
+
+  <circle cx="69" cy="50" r="2.5" fill="#CE422B" opacity="0.85"></circle>
+  <circle cx="69" cy="50" r="1.5" fill="#E85D47"></circle>
+
+  <circle cx="66" cy="66" r="3" fill="#CE422B" opacity="0.9"></circle>
+  <circle cx="66" cy="66" r="1.8" fill="#E85D47"></circle>
+
+  <circle cx="34" cy="34" r="3" fill="#CE422B" opacity="0.9"></circle>
+  <circle cx="34" cy="34" r="1.8" fill="#E85D47"></circle>
+
+  <circle cx="31" cy="50" r="2.5" fill="#CE422B" opacity="0.85"></circle>
+  <circle cx="31" cy="50" r="1.5" fill="#E85D47"></circle>
+
+  <circle cx="34" cy="66" r="3" fill="#CE422B" opacity="0.9"></circle>
+  <circle cx="34" cy="66" r="1.8" fill="#E85D47"></circle>
+
+  <!-- Corner brackets - thicker and more prominent -->
+  <path d="M 18 18 L 30 18 L 30 20.5 L 20.5 20.5 L 20.5 30 L 18 30 Z" fill="#CE422B" opacity="0.7"></path>
+  <path d="M 82 18 L 82 30 L 79.5 30 L 79.5 20.5 L 70 20.5 L 70 18 Z" fill="#CE422B" opacity="0.7"></path>
+  <path d="M 18 82 L 18 70 L 20.5 70 L 20.5 79.5 L 30 79.5 L 30 82 Z" fill="#CE422B" opacity="0.7"></path>
+  <path d="M 82 82 L 70 82 L 70 79.5 L 79.5 79.5 L 79.5 70 L 82 70 Z" fill="#CE422B" opacity="0.7"></path>
+
+  <!-- Small accent lines near corners for tech feel -->
+  <rect x="25" y="25" width="8" height="0.8" fill="#E85D47" opacity="0.5"></rect>
+  <rect x="25" y="25" width="0.8" height="8" fill="#E85D47" opacity="0.5"></rect>
+
+  <rect x="67" y="25" width="8" height="0.8" fill="#E85D47" opacity="0.5"></rect>
+  <rect x="74.2" y="25" width="0.8" height="8" fill="#E85D47" opacity="0.5"></rect>
+
+  <rect x="25" y="74.2" width="8" height="0.8" fill="#E85D47" opacity="0.5"></rect>
+  <rect x="25" y="67" width="0.8" height="8" fill="#E85D47" opacity="0.5"></rect>
+
+  <rect x="67" y="74.2" width="8" height="0.8" fill="#E85D47" opacity="0.5"></rect>
+  <rect x="74.2" y="67" width="0.8" height="8" fill="#E85D47" opacity="0.5"></rect>
+</svg>

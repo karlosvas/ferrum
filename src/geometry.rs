@@ -94,3 +94,10 @@
 // let num_index: u32 = INDICES.len() as u32;
 
 // }
+
+// #[repr(C)]
+// #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+// pub struct Vertex {
+//     pub position: [f32; 3],
+//     pub color: [f32; 3],
+// }

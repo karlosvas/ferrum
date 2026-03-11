@@ -10,7 +10,23 @@ use crate::{
 use anyhow::Ok;
 use wgpu::{Buffer, util::DeviceExt};
 
+#[cfg(target_arch = "wasm32")]
+fn format_url(file_name: &str) -> reqwest::Url {
+    let window = web_sys::window().unwrap();
+    let location = window.location();
+    let mut origin = location.origin().unwrap();
+    let base = reqwest::Url::parse(&format!("{}/res/", origin)).unwrap();
+    base.join(file_name).unwrap()
+}
+
 pub async fn load_string(file_name: &str) -> anyhow::Result<String> {
+    #[cfg(target_arch = "wasm32")]
+    let text = {
+        let url = format_url(file_name);
+        reqwest::get(url).await?.text().await?
+    };
+
+    #[cfg(not(target_arch = "wasm32"))]
     let text: String = {
         let path: PathBuf = std::path::Path::new(env!("OUT_DIR"))
             .join("res")
@@ -23,6 +39,13 @@ pub async fn load_string(file_name: &str) -> anyhow::Result<String> {
 }
 
 pub async fn load_binary(file_name: &str) -> anyhow::Result<Vec<u8>> {
+    #[cfg(target_arch = "wasm32")]
+    let data = {
+        let url = format_url(file_name);
+        reqwest::get(url).await?.bytes().await?.to_vec()
+    };
+
+    #[cfg(not(target_arch = "wasm32"))]
     let data = {
         let path: PathBuf = std::path::Path::new(env!("OUT_DIR"))
             .join("res")

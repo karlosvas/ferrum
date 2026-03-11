@@ -22,6 +22,9 @@ pollster = "0.3"
 bytemuck = { version = "1.14", features = ["derive"] }
 cgmath = "0.18"
 tobj = { version = "3.2", default-features = false, features = ["async"]}
+web-sys = "0.3"
+reqwest = "0.13.2"
+web-time = "1.1.0"
 
 [dependencies.image]
 version = "0.24"
@@ -46,5 +49,6 @@ wasm-bindgen-futures = "0.4.30"
 web-sys = {version = "0.3", features = [
     "Document",
     "Window",
-    "Element"
+    "Element",
+    "Location"
 ]}

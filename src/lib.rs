@@ -5,8 +5,6 @@ mod resources;
 mod structs;
 mod texture;
 
-use std::num::NonZero;
-
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 #[cfg(target_arch = "wasm32")]
@@ -44,6 +42,9 @@ impl State {
 
         // Nuestro punto de entarda para nuestro bakend
         let instance: Instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+            #[cfg(target_arch = "wasm32")]
+            backends: wgpu::Backends::GL | wgpu::Backends::BROWSER_WEBGPU,
+            #[cfg(not(target_arch = "wasm32"))]
             backends: wgpu::Backends::PRIMARY,
             ..Default::default()
         });
@@ -65,7 +66,11 @@ impl State {
             .request_device(&wgpu::DeviceDescriptor {
                 label: None,
                 required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::default(),
+                required_limits: if cfg!(target_arch = "wasm32") {
+                    wgpu::Limits::downlevel_webgl2_defaults()
+                } else {
+                    wgpu::Limits::default()
+                },
                 experimental_features: wgpu::ExperimentalFeatures::disabled(),
                 memory_hints: Default::default(),
                 trace: wgpu::Trace::Off,
@@ -220,6 +225,7 @@ impl State {
             camera_bind_group,
             camera_controller,
             obj_model,
+            last_render_time: web_time::Instant::now(),
             window,
         })
     }
@@ -230,6 +236,8 @@ impl State {
             self.config.width = width;
 
             self.surface.configure(&self.device, &self.config);
+
+            self.camera.aspect = self.config.width as f32 / self.config.height as f32;
 
             self.is_surface_configuration = true;
         }
@@ -274,12 +282,6 @@ impl State {
                 });
 
             render_pass.set_pipeline(&self.render_pipeline);
-            // render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
-            // render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
-            // render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-            // render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-            // render_pass.draw_indexed(0..self.num_index, 0, 0..1);
-
             use models::DrawModel;
             render_pass.draw_model(&self.obj_model, &self.camera_bind_group);
         }
@@ -292,6 +294,7 @@ impl State {
 
     pub fn handle_key(&mut self, event_loop: &ActiveEventLoop, key: KeyCode, is_pressed: bool) {
         if key == KeyCode::Escape && is_pressed {
+            #[cfg(not(target_arch = "wasm32"))]
             event_loop.exit();
         } else {
             self.camera_controller.handle_key(key, is_pressed);
@@ -299,7 +302,10 @@ impl State {
     }
 
     pub fn update(&mut self) {
-        self.camera_controller.update_camera(&mut self.camera);
+        let now: web_time::Instant = web_time::Instant::now();
+        let dt: web_time::Duration = now - self.last_render_time;
+        self.last_render_time = now;
+        self.camera_controller.update_camera(&mut self.camera, dt);
         self.camera_uniform.update_view_proj(&self.camera);
         self.queue.write_buffer(
             &self.camera_buffer,
@@ -423,8 +429,8 @@ impl ApplicationHandler<State> for App {
         {
             event.window.request_redraw();
             event.resize(
-                event.window.inner_size().width,
                 event.window.inner_size().height,
+                event.window.inner_size().width,
             );
         }
         self.state = Some(event)
@@ -455,7 +461,7 @@ pub fn run() -> anyhow::Result<()> {
 
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen(start)]
-pub fn run_reb() -> Result<(), wasm_bindgen::JsValue> {
+pub fn run_web() -> Result<(), wasm_bindgen::JsValue> {
     console_error_panic_hook::set_once();
     run().unwrap_throw();
     Ok(())

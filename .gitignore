@@ -1,2 +1,19 @@
-/target
-.vscode/*
+# node
+node_modules/
+
+# builds frontend
+dist/
+build/
+
+# logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# env
+.env
+.env.local
+
+target
