@@ -52,3 +52,10 @@ web-sys = {version = "0.3", features = [
     "Element",
     "Location"
 ]}
+
+
+[workspace]
+members = [
+    ".",
+    "xtask"
+]
