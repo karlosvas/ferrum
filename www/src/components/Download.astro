@@ -4,18 +4,24 @@ import GradientButton from "./GradientButton.astro";
 ---
 
 <section class="my-48">
-  <h2 class="text-primary-light font-bold text-xl py-5">Descarga Ferrum</h2>
-  <div class="flex gap-5 flex-row-reverse">
+  <h2 class="text-primary-light py-5 text-xl font-bold">Descarga Ferrum</h2>
+  <div class="flex flex-row-reverse gap-5">
     <span>
       <p class="text-muted mb-6 leading-relaxed">
-        Acceso abierto y multiplataforma. Descarga Ferrum sin coste para Windows, macOS o Linux, o accede directamente
-        desde tu navegador mediante WebAssembly. Motor de rendering 3D desarrollado en Rust, especializado en
-        visualización anatómica educativa con soporte completo para realidad virtual.
+        Acceso abierto y multiplataforma. Descarga Ferrum sin coste para
+        Windows, macOS o Linux, o accede directamente desde tu navegador
+        mediante WebAssembly. Motor de rendering 3D desarrollado en Rust,
+        especializado en visualización anatómica educativa con soporte completo
+        para realidad virtual.
       </p>
       <GradientButton>
         <span class="mx-2">Descargar Ahora</span><DownloadIcon />
       </GradientButton>
     </span>
-    <img src="img/microscopio.webp" alt="Visualización microscópica en Ferrum" class="w-1/3 rounded-xl object-cover" />
+    <img
+      src="img/microscopio.webp"
+      alt="Visualización microscópica en Ferrum"
+      class="w-1/3 rounded-xl object-cover"
+    />
   </div>
 </section>

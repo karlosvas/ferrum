@@ -1,0 +1,167 @@
+---
+import Header from "@/components/Header.astro";
+import Footer from "@/components/Footer.astro";
+import Layout from "../layouts/Layout.astro";
+import "@/styles/global.css";
+import GradientButton from "@/components/GradientButton.astro";
+
+const plans = [
+  {
+    name: "FREE",
+    price: "$0",
+    period: "/siempre",
+    description: "Para investigadores, estudiantes y proyectos opensource",
+    features: [
+      {
+        text: "Hasta 3 modelos activos",
+        inclued: true,
+      },
+      {
+        text: "Exportacion a WebGL",
+        inclued: true,
+      },
+      {
+        text: "Comunidad de Discord",
+        inclued: true,
+      },
+      {
+        text: "Sin uso comercial",
+        inclued: false,
+      },
+    ],
+    cta: "Descargar",
+    featured: false,
+  },
+  {
+    name: "STUDIO",
+    price: "$100",
+    period: "/siempre",
+    description:
+      "Para estudios indies, licencia comercial completa sin royalties",
+    features: [
+      {
+        text: "Modelos ilimitados activos",
+        inclued: true,
+      },
+      {
+        text: "Exportacion a WASM + WEBGL",
+        inclued: true,
+      },
+      {
+        text: "Soporte VR/XR",
+        inclued: true,
+      },
+      {
+        text: "Acceso al codigo fuente",
+        inclued: true,
+      },
+      {
+        text: "Sin SLA garantizado",
+        inclued: false,
+      },
+    ],
+    cta: "Obtener licencia",
+    featured: true,
+  },
+  {
+    name: "ENTERPRISE",
+    price: "CUSTOM",
+    period: "/siempre",
+    description:
+      "Para empresas y intituciones, con soporte dedicado y todas las funcionalidades",
+    features: [
+      {
+        text: "Licencias multi-sede",
+        inclued: true,
+      },
+      {
+        text: "Soporte prioritario 24/7",
+        inclued: true,
+      },
+      {
+        text: "Integraciones customizadas",
+        inclued: true,
+      },
+    ],
+    cta: "Contactar Ventas",
+    featured: false,
+  },
+];
+
+---
+
+<Layout>
+  <Header />
+  <main class="m-auto mt-20 h-fit max-w-[90%] px-5 md:px-20 lg:max-w-[100%]">
+    <section
+      class="py-20 px-5 md:px-20 max-w-[90%] lg:max-w-[70%] mx-auto"
+    >
+      <div class="text-center mb-12">
+        <p class="tracking-widest text-xs text-muted mb-2 font-mono">LICENCIA PERPETUA</p>
+        <h2 class="text-3xl font-medium">Un pago para siempre</h2>
+        <p class="text-sm text-muted mt-2">Sin subbscripciones, sin sorpresas</p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {plans.map((plan) => (
+          <div class:list={[
+            "rounded-xl p-6 flex flex-col font-mono relative",
+            plan.featured
+            ? "border-2 border-info"
+            : "border border-border"
+          ]}>
+            {plan.featured && (
+              <span class="absolute -top-px left-1/2 -translate-x-1/2 bg-info text-info-foreground text-[11px] tracking-wide px-3 py-1 rounded-b-md">
+                Mas Popular
+              </span>
+            )}
+            <p class="text-[11px] tracking-widest text-muted mt-2 mb-4">{plan.name}</p>
+           <ul class="border-t border-border pt-4 mb-6 space-y-2 flex-1">
+            {plan.features.map((f) => (
+              <li class:list={[
+                "text-xs",
+                f.inclued
+                ? "text-foreground"
+                : "text-muted line-through"
+              ]}> - {f.text}</li>
+            ))}
+           </ul>
+           <GradientButton data-plan={plan.name}>{plan.cta}</GradientButton>
+          </div>
+        ))}
+      </div>
+
+      <p class="text-center text-xs text-muted mt-8">
+        Todas las licencias incluyen acceso de por vida a la versión adquirida.
+      </p>
+
+    </section>
+  </main>
+  <Footer />
+</Layout>
+
+
+<script>
+  import Toastify from 'toastify-js'
+  import "toastify-js/src/toastify.css"
+
+  document.querySelectorAll("[data-plan]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const plan = btn.getAttribute("data-plan");
+      Toastify({
+        text: `Plan ${plan} is selected`,
+        duration: 3000,
+        destination: "https://github.com/apvarun/toastify-js",
+        newWindow: true,
+        close: true,
+        gravity: "top",
+        position: "left",
+        stopOnFocus: true,
+        style: {
+          background: "linear-gradient(to right, #00b09b, #96c93d)",
+        },
+        onClick: function(){}
+      }).showToast();
+    });
+  });
+</script>

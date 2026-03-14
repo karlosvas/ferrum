@@ -4,37 +4,79 @@ import GitHubIcon from "@/assets/icons/GitHubIcon.astro";
 ---
 
 <header
-  class="flex justify-between p-5 lg:px-20 items-center bg-secondary/90 opacity-95 border-gray-700 border-b border-1 sticky z-50"
+  class="bg-secondary/90 sticky z-50 flex items-center justify-between border-1 border-b border-gray-700 p-5 opacity-95 lg:px-20"
 >
   <a href="/" class="cursor-pointer">
     <FerrumLogo height="80" width="80" />
   </a>
   <nav>
-    <ul class="flex space-x-5 lg:space-x-10 cursor-pointer text-md lg:text-xl">
-      <li class="hover:text-primary-light transition-all duration-200 relative group text-md">
-        Home
-        <span
-          class="absolute bottom-0 left-0 w-0 h-0.5 bg-linear-to-r from-accent to-primary-light group-hover:w-full transition-all duration-200"
-        ></span>
+    <ul class="text-md flex cursor-pointer space-x-5 lg:space-x-10 lg:text-xl">
+      <li
+        class="hover:text-primary-light group text-md relative transition-all duration-200"
+      >
+        <a href="/#home">
+          Home
+          <span
+            class="from-accent to-primary-light absolute bottom-0 left-0 h-0.5 w-0 bg-linear-to-r transition-all duration-200 group-hover:w-full"
+          ></span>
+        </a>
       </li>
-      <li class="hover:text-primary-light transition-all duration-200 relative group text-md">
-        Downloads
-        <span
-          class="absolute bottom-0 left-0 w-0 h-0.5 bg-linear-to-r from-accent to-primary-light group-hover:w-full transition-all duration-200"
-        ></span>
+      <li
+        class="hover:text-primary-light group text-md relative transition-all duration-200"
+      >
+        <a href="/#features">
+          Features
+          <span
+            class="from-accent to-primary-light absolute bottom-0 left-0 h-0.5 w-0 bg-linear-to-r transition-all duration-200 group-hover:w-full"
+          ></span>
+        </a>
       </li>
-      <li class="hover:text-primary-light transition-all duration-200 relative group text-md">
-        Demo
-        <span
-          class="absolute bottom-0 left-0 w-0 h-0.5 bg-linear-to-r from-accent to-primary-light group-hover:w-full transition-all duration-200"
-        ></span>
+      <li
+        class="hover:text-primary-light group text-md relative transition-all duration-200"
+      >
+        <a href="/#vr">
+          VR
+          <span
+            class="from-accent to-primary-light absolute bottom-0 left-0 h-0.5 w-0 bg-linear-to-r transition-all duration-200 group-hover:w-full"
+          ></span>
+        </a>
+      </li>
+      <li
+        class="hover:text-primary-light group text-md relative transition-all duration-200"
+      >
+        <a href="/#requirements">
+          Requirments
+          <span
+            class="from-accent to-primary-light absolute bottom-0 left-0 h-0.5 w-0 bg-linear-to-r transition-all duration-200 group-hover:w-full"
+          ></span>
+        </a>
+      </li>
+      <li
+        class="hover:text-primary-light group text-md relative transition-all duration-200"
+      >
+        <a href="/demo">
+          Demo
+          <span
+            class="from-accent to-primary-light absolute bottom-0 left-0 h-0.5 w-0 bg-linear-to-r transition-all duration-200 group-hover:w-full"
+          ></span>
+        </a>
+      </li>
+      <li
+        class="hover:text-primary-light group text-md relative transition-all duration-200"
+      >
+        <a href="/download">
+          Download
+          <span
+            class="from-accent to-primary-light absolute bottom-0 left-0 h-0.5 w-0 bg-linear-to-r transition-all duration-200 group-hover:w-full"
+          ></span>
+        </a>
       </li>
     </ul>
   </nav>
   <a
     href="https://github.com/karlosvas"
     target="_blank"
-    class="cursor-pointer hover:text-primary-light transition-all duration-200"
+    class="hover:text-primary-light cursor-pointer transition-all duration-200"
   >
     <GitHubIcon height="30" width="30" />
   </a>

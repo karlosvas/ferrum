@@ -5,18 +5,26 @@ interface Props {
 const { dataSection } = Astro.props;
 ---
 
-<section class="my-52">
-  <h2 class="text-primary-light mt-80 font-bold text-2xl">Características</h2>
-  <div class="grid grid-cols-1 md:grid-cols-2 gap-6 my-5">
+<section class="my-52" id="features">
+  <h2 class="text-primary-light mt-80 text-2xl font-bold">Características</h2>
+  <div class="my-5 grid grid-cols-1 gap-6 md:grid-cols-2">
     {
       dataSection.map((item) => {
         return (
-          <div class="bg-secondary/60 border-primary-light border-1 p-3 space-y-3 rounded-xl hover:translate-y-0.5 transition-transform duration-200 hover:bg-secondary/40 transition-colors group">
-            <span class="flex space-x-3 items-center">
-              <item.svg heigth="30px" width="40px" class="group-hover:text-primary" />
-              <h3 class="text-shadow-white group-hover:text-primary-light">{item.title}</h3>
+          <div class="bg-secondary/60 border-primary-light hover:bg-secondary/40 group space-y-3 rounded-xl border-1 p-3 transition-colors transition-transform duration-200 hover:translate-y-0.5">
+            <span class="flex items-center space-x-3">
+              <item.svg
+                heigth="30px"
+                width="40px"
+                class="group-hover:text-primary"
+              />
+              <h3 class="group-hover:text-primary-light text-shadow-white">
+                {item.title}
+              </h3>
             </span>
-            <p class="text-muted group-hover:text-white transition-colors duration-200">{item.description}</p>
+            <p class="text-muted transition-colors duration-200 group-hover:text-white">
+              {item.description}
+            </p>
           </div>
         );
       })

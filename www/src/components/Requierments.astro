@@ -1,54 +1,93 @@
-<section class="mt-52 mb-10">
-  <h2 class="text-primary-light font-bold text-2xl mb-8">Requisitos del Sistema</h2>
+<section class="my-52" id="requirements">
+  <h2 class="text-primary-light mb-8 text-2xl font-bold">
+    Requisitos del Sistema
+  </h2>
 
-  <div class="grid md:grid-cols-2 gap-8">
+  <div class="grid gap-8 md:grid-cols-2">
     <!-- Requisitos Mínimos -->
-    <div class="backdrop-blur-sm bg-white/5 p-6 rounded-xl border border-white/10">
-      <h3 class="text-primary-light font-bold text-xl mb-4">Mínimos</h3>
-      <ul class="space-y-2 text-muted">
-        <li><span class="text-primary-light pr-2">●</span>CPU: Intel Core i5 / AMD Ryzen 5 (4+ cores)</li>
+    <div
+      class="rounded-xl border border-white/10 bg-white/5 p-6 backdrop-blur-sm"
+    >
+      <h3 class="text-primary-light mb-4 text-xl font-bold">Mínimos</h3>
+      <ul class="text-muted space-y-2">
+        <li>
+          <span class="text-primary-light pr-2">●</span>CPU: Intel Core i5 / AMD
+          Ryzen 5 (4+ cores)
+        </li>
         <li><span class="text-primary-light pr-2">●</span>RAM: 8 GB</li>
-        <li><span class="text-primary-light pr-2">●</span>GPU: NVIDIA GTX 1050 / AMD RX 560 (2GB VRAM)</li>
-        <li><span class="text-primary-light pr-2">●</span>Almacenamiento: 2 GB disponibles</li>
-        <li><span class="text-primary-light pr-2">●</span>SO: Windows 10, macOS 11, Linux (Kernel 5.10+)</li>
+        <li>
+          <span class="text-primary-light pr-2">●</span>GPU: NVIDIA GTX 1050 /
+          AMD RX 560 (2GB VRAM)
+        </li>
+        <li>
+          <span class="text-primary-light pr-2">●</span>Almacenamiento: 2 GB
+          disponibles
+        </li>
+        <li>
+          <span class="text-primary-light pr-2">●</span>SO: Windows 10, macOS
+          11, Linux (Kernel 5.10+)
+        </li>
       </ul>
     </div>
 
     <!-- Requisitos Recomendados -->
-    <div class="backdrop-blur-sm bg-white/5 p-6 rounded-xl border border-white/10">
-      <h3 class="text-primary-light font-bold text-xl mb-4">Recomendados</h3>
-      <ul class="space-y-2 text-muted">
-        <li><span class="text-primary-light pr-2">●</span>CPU: Intel Core i7 / AMD Ryzen 7 (8+ cores)</li>
+    <div
+      class="rounded-xl border border-white/10 bg-white/5 p-6 backdrop-blur-sm"
+    >
+      <h3 class="text-primary-light mb-4 text-xl font-bold">Recomendados</h3>
+      <ul class="text-muted space-y-2">
+        <li>
+          <span class="text-primary-light pr-2">●</span>CPU: Intel Core i7 / AMD
+          Ryzen 7 (8+ cores)
+        </li>
         <li><span class="text-primary-light pr-2">●</span>RAM: 16 GB</li>
-        <li><span class="text-primary-light pr-2">●</span>GPU: NVIDIA RTX 3060 / AMD RX 6600 (8GB VRAM)</li>
-        <li><span class="text-primary-light pr-2">●</span>Almacenamiento: 4 GB disponibles (SSD recomendado)</li>
-        <li><span class="text-primary-light pr-2">●</span>SO: Última versión estable</li>
+        <li>
+          <span class="text-primary-light pr-2">●</span>GPU: NVIDIA RTX 3060 /
+          AMD RX 6600 (8GB VRAM)
+        </li>
+        <li>
+          <span class="text-primary-light pr-2">●</span>Almacenamiento: 4 GB
+          disponibles (SSD recomendado)
+        </li>
+        <li>
+          <span class="text-primary-light pr-2">●</span>SO: Última versión
+          estable
+        </li>
       </ul>
     </div>
   </div>
 
   <!-- Realidad Virtual -->
-  <div class="mt-8 backdrop-blur-sm bg-white/5 p-6 rounded-xl border border-primary-light/30">
-    <h3 class="text-primary-light font-bold text-xl mb-4">Para Experiencia VR</h3>
-    <ul class="space-y-2 text-muted">
+  <div
+    class="border-primary-light/30 mt-8 rounded-xl border bg-white/5 p-6 backdrop-blur-sm"
+  >
+    <h3 class="text-primary-light mb-4 text-xl font-bold">
+      Para Experiencia VR
+    </h3>
+    <ul class="text-muted space-y-2">
       <li>
-        <span class="text-primary-light pr-2">●</span>HMD: Headset compatible con OpenXR (Meta Quest 2/3/Pro, Valve
-        Index, HTC Vive)
+        <span class="text-primary-light pr-2">●</span>HMD: Headset compatible
+        con OpenXR (Meta Quest 2/3/Pro, Valve Index, HTC Vive)
       </li>
       <li>
-        <span class="text-primary-light pr-2">●</span>GPU: NVIDIA RTX 3060 o superior (mínimo para 60 FPS estables)
+        <span class="text-primary-light pr-2">●</span>GPU: NVIDIA RTX 3060 o
+        superior (mínimo para 60 FPS estables)
       </li>
       <li>
-        <span class="text-primary-light pr-2">●</span>Espacio de juego: 2m x 2m recomendado para interacción completa
+        <span class="text-primary-light pr-2">●</span>Espacio de juego: 2m x 2m
+        recomendado para interacción completa
       </li>
     </ul>
   </div>
 
   <!-- Nota WebAssembly -->
-  <div class="mt-6 p-4 bg-primary-light/10 rounded-lg border border-primary-light/20">
-    <p class="text-sm text-muted">
-      <span class="text-primary-light font-bold">Versión Web:</span> Accesible desde cualquier navegador moderno con soporte
-      WebGL 2.0 (Chrome 79+, Firefox 78+, Safari 15+). No requiere instalación.
+  <div
+    class="bg-primary-light/10 border-primary-light/20 mt-6 rounded-lg border p-4"
+  >
+    <p class="text-muted text-sm">
+      <span class="text-primary-light font-bold">Versión Web:</span> Accesible desde
+      cualquier navegador moderno con soporte WebGL 2.0 (Chrome 79+, Firefox 78+,
+      Safari 15+). No requiere instalación.
     </p>
   </div>
 </section>

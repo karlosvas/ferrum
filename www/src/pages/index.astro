@@ -13,13 +13,13 @@ import Features from "@/components/Features.astro";
 import GradientEffect from "@/components/GradientEffect.astro";
 import Requierments from "@/components/Requierments.astro";
 import Download from "@/components/Download.astro";
-import Demo from "@/components/Demo.astro";
 import VirtualReality from "@/components/VirtualReality.astro";
 import "@/styles/global.css";
 
 const dataSection = [
   {
-    title: "Características Arquitectura Técnica para Visualización Multiescala",
+    title:
+      "Características Arquitectura Técnica para Visualización Multiescala",
     description:
       "Ferrum combina rendering PBR (Physically Based Rendering) con precisión anatómica para generar una experiencia de aprendizaje que reproduce la profundidad espacial que desarrollan profesionales médicos.",
     svg: BoxIcon,
@@ -38,12 +38,14 @@ const dataSection = [
   },
   {
     title: "Multiplataforma y Accesible",
-    description: "Disponible en Windows, macOS y Linux, con una versión WebAssembly para acceso sin instalación.",
+    description:
+      "Disponible en Windows, macOS y Linux, con una versión WebAssembly para acceso sin instalación.",
     svg: LayersIcon,
   },
   {
     title: "Navegación Continua entre Escalas Anatómicas",
-    description: "Explora desde vistas completas de órganos hasta detalles celulares con transiciones fluidas.",
+    description:
+      "Explora desde vistas completas de órganos hasta detalles celulares con transiciones fluidas.",
     svg: MonitorIcon,
   },
   {
@@ -57,15 +59,13 @@ const dataSection = [
 
 <Layout>
   <Header />
-  <main class="h-fit mt-52 px-5 md:px-20 max-w-[90%] lg:max-w-[70%] m-auto">
+  <main class="m-auto mt-20 h-fit max-w-[90%] px-5 md:px-20 lg:max-w-[70%]">
     <GradientEffect />
     <HeroSection />
     <Features dataSection={dataSection} />
     <VirtualReality />
     <Download />
     <Requierments />
-    <Demo />
   </main>
-
   <Footer />
 </Layout>
