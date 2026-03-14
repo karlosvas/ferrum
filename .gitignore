@@ -15,5 +15,18 @@ Thumbs.db
 # env
 .env
 .env.local
-
 target
+
+# generated types
+.astro/
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# jetbrains setting folder
+.idea/
+.vercel
+.env*.local

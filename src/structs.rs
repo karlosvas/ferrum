@@ -17,6 +17,7 @@ pub struct State {
     pub camera_controller: CameraController,
     pub obj_model: crate::structs::Model,
     pub last_render_time: web_time::Instant,
+    pub depth_texture: texture::Texture,
     pub window: Arc<Window>,
 }
 

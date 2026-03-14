@@ -1,0 +1,59 @@
+# Blender MTL File: 'Rigged_Indoor_Plant_IK.blend'
+# Material Count: 5
+
+newmtl Material
+Ns 96.078431
+Ka 0.000000 0.000000 0.000000
+Kd 0.147580 0.003220 0.007307
+Ks 0.219692 0.093888 0.075502
+Ni 1.000000
+d 1.000000
+illum 2
+map_Bump textures\\01_indoor plant_NOR.jpg
+map_Kd textures\\01_indoor plant_col.jpg
+
+newmtl Material.002
+Ns 96.078431
+Ka 0.000000 0.000000 0.000000
+Kd 0.144931 0.042289 0.039765
+Ks 0.226580 0.059469 0.054407
+Ni 1.000000
+d 1.000000
+illum 2
+map_Bump textures\\01_indoor plant_NOR.jpg
+map_Kd textures\\01_indoor plant_col.jpg
+
+newmtl Material.003
+Ns 96.078431
+Ka 0.000000 0.000000 0.000000
+Kd 0.178845 0.178845 0.178845
+Ks 0.500000 0.500000 0.500000
+Ni 1.000000
+d 1.000000
+illum 2
+map_Bump textures\\01_indoor plant_NOR.jpg
+map_Kd textures\\01_indoor plant_col.jpg
+map_Ks textures\\01_indoor plant_col.jpg
+
+newmtl Material.004
+Ns 96.078431
+Ka 0.000000 0.000000 0.000000
+Kd 0.620144 0.800000 0.284747
+Ks 0.057653 0.093345 0.058525
+Ni 1.000000
+d 1.000000
+illum 2
+map_Kd textures\01_indoor plant_NOR.jpg
+map_Bump textures\\01_indoor plant_NOR.jpg
+
+newmtl Material.005
+Ns 96.078431
+Ka 0.000000 0.000000 0.000000
+Kd 0.640000 0.640000 0.640000
+Ks 0.000000 0.000000 0.000000
+Ni 1.000000
+d 1.000000
+illum 1
+map_Kd textures\01_indoor plant_col.jpg
+map_Bump textures\\01_indoor plant_NOR.jpg
+map_Ks textures\\01_indoor plant_col.jpg
