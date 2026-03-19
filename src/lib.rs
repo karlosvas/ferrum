@@ -1,18 +1,21 @@
 mod camera;
 mod geometry;
+mod light;
 mod models;
 mod resources;
 mod structs;
 mod texture;
 
+use cgmath::Rotation3;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
+use wgpu::{BindGroup, Buffer, ShaderModuleDescriptor, util::DeviceExt};
 #[cfg(target_arch = "wasm32")]
 use winit::event_loop::EventLoopProxy;
 
 use crate::{
     models::Vertex,
-    structs::{Camera, ModelVertex},
+    structs::{Camera, InstanceRaw, LightUniform, ModelVertex, lightUniform},
 };
 use {
     image::ImageBuffer,
@@ -171,7 +174,7 @@ impl State {
                 .unwrap();
 
         let depth_texture: texture::Texture =
-            texture::Texture::create_depth__texture(&device, &config, "depth_texture");
+            texture::Texture::create_depth_texture(&device, &config, "depth_texture");
 
         let render_pipeline: RenderPipeline =
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -221,6 +224,68 @@ impl State {
                 multiview_mask: None,
             });
 
+        let light_uniform: lightUniform = structs::lightUniform {
+            position: [2.0, 2.0, 2.0],
+            color: [1.0, 1.0, 1.0],
+            _padding: 0,
+            _padding2: 0,
+        };
+        let light_buffer: Buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("light_buffer"),
+            contents: bytemuck::cast_slice(&[light_uniform]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+        let light_bind_group_layout: BindGroupLayout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("light_bind_group_layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            });
+
+        let light_bind_group: BindGroup = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("light_bind_group"),
+            layout: &light_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: light_buffer.as_entire_binding(),
+            }],
+        });
+
+        let render_pipeline_layout: PipelineLayout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                bind_group_layouts: &[
+                    &texture_bind_group_layout,
+                    &camera_bind_group_layout,
+                    &light_bind_group_layout,
+                ],
+                label: Some("render_pipeline_layout"),
+                ..Default::default()
+            });
+
+        let render_pipeline_light = {
+            let normal_shader: ShaderModuleDescriptor = wgpu::ShaderModuleDescriptor {
+                label: Some("normal_shader"),
+                source: wgpu::ShaderSource::Wgsl(include_str!("shaders.wgsl").into())
+            };
+
+            LightUniform::create_render_pipeline(
+                &device,
+                &render_pipeline_layout,
+                config.format,
+                Some(texture::Texture::DEPTH_FORMAT),
+                &[models::DrawModel::desc()],
+                shader,
+            );
+        }
+
         Ok(Self {
             surface,
             device,
@@ -236,6 +301,8 @@ impl State {
             obj_model,
             last_render_time: web_time::Instant::now(),
             depth_texture,
+            light_uniform,
+            light_buffer,
             window,
         })
     }
@@ -249,11 +316,8 @@ impl State {
 
             self.camera.aspect = self.config.width as f32 / self.config.height as f32;
 
-            self.depth_texture = texture::Texture::create_depth__texture(
-                &self.device,
-                &self.config,
-                "depth_texture",
-            );
+            self.depth_texture =
+                texture::Texture::create_depth_texture(&self.device, &self.config, "depth_texture");
 
             self.is_surface_configuration = true;
         }
@@ -334,6 +398,18 @@ impl State {
             &self.camera_buffer,
             0,
             bytemuck::cast_slice(&[self.camera_uniform]),
+        );
+
+        let old_position: cgmath::Vector3<_> = self.light_uniform.position.into();
+        self.light_uniform.position =
+            (cgmath::Quaternion::from_axis_angle((0.0, 1.0, 0.0).into(), cgmath::Deg(1.0))
+                * old_position)
+                .into();
+
+        self.queue.write_buffer(
+            &self.light_buffer,
+            0,
+            bytemuck::cast_slice(&[self.light_uniform]),
         );
     }
 }

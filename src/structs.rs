@@ -1,3 +1,4 @@
+use wgpu::Buffer;
 #[cfg(target_arch = "wasm32")]
 use winit::event_loop::EventLoopProxy;
 
@@ -18,6 +19,8 @@ pub struct State {
     pub obj_model: crate::structs::Model,
     pub last_render_time: web_time::Instant,
     pub depth_texture: texture::Texture,
+    pub light_uniform: lightUniform,
+    pub light_buffer: Buffer,
     pub window: Arc<Window>,
 }
 
@@ -83,4 +86,22 @@ pub struct Material {
 pub struct Model {
     pub meshes: Vec<Mesh>,
     pub materials: Vec<Material>,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct LightUniform {
+    pub position: [f32; 3],
+    pub color: [f32; 3],
+    pub _padding: u32,
+    pub _padding2: u32,
+}
+
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+#[allow(dead_code)]
+pub struct InstanceRaw {
+    pub model: [[f32: 4], 4],
+    pub normals: [[f32; 3], 3]
 }

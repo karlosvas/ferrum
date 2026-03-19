@@ -1,4 +1,7 @@
-use crate::{structs, structs::ModelVertex};
+use cgmath::num_traits::float;
+use wgpu::VertexBufferLayout;
+
+use crate::{structs::{self, InstanceRaw, ModelVertex}, texture};
 
 pub trait Vertex {
     fn desc() -> wgpu::VertexBufferLayout<'static>;
@@ -77,6 +80,54 @@ where
         for mesh in &models.meshes {
             let material: &structs::Material = &models.materials[mesh.material];
             self.draw_mesh(mesh, material, camera_bind_group);
+        }
+    }
+}
+
+impl InstanceRaw {
+    fn desc() -> wgpu::VertexBufferLayout<'static> {
+        use std::mem;
+
+        wgpu::VertexBufferLayout {
+            array_stride: mem::size_of<InstanceRaw>() as wgpu wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: &[
+                wgpu::VertexAttribute {
+                    format: wgpu::VertexFormat::Float32x4,
+                    offset: 0,
+                    shader_location: 5
+                },
+                wgpu::VertexAttribute {
+                    format: wgpu::VertexFormat::Float32x4,
+                    offset: mem::size_of<[float32; 4]>() as wgpu::BufferAddress,
+                    shader_location: 6
+                },
+                wgpu::VertexAttribute {
+                    format: wgpu::VertexFormat::Float32x4,
+                    offset: mem::size_of<[float32; 8]>() as wgpu::BufferAddress,
+                    shader_location: 6
+                },
+                wgpu::VertexAttribute {
+                    format: wgpu::VertexFormat::Float32x4,
+                    offset: mem::size_of<[float32; 12]>() as wgpu::BufferAddress,
+                    shader_location: 6
+                },
+                wgpu::VertexAttribute {
+                    format: wgpu::VertexFormat::Float32x4,
+                    offset: mem::size_of<[float32; 16]>() as wgpu::BufferAddress,
+                    shader_location: 6
+                },
+                wgpu::VertexAttribute {
+                    format: wgpu::VertexFormat::Float32x4,
+                    offset: mem::size_of<[float32; 29]>() as wgpu::BufferAddress,
+                    shader_location: 6
+                },
+                wgpu::VertexAttribute {
+                    format: wgpu::VertexFormat::Float32x4,
+                    offset: mem::size_of<[float32; 32]>() as wgpu::BufferAddress,
+                    shader_location: 6
+                },
+            ]
         }
     }
 }

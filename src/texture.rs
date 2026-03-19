@@ -87,7 +87,7 @@ impl Texture {
         })
     }
 
-    pub fn create_depth__texture(
+    pub fn create_depth_texture(
         device: &wgpu::Device,
         config: &wgpu::SurfaceConfiguration,
         label: &str,
