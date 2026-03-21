@@ -6,7 +6,7 @@ use {
 };
 
 fn main() -> Result<()> {
-    println!("cargo:rerun-if-changed=res/*");
+    println!("cargo:rerun-if-changed=res");
 
     let target: String = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
 

@@ -15,7 +15,7 @@ use winit::event_loop::EventLoopProxy;
 
 use crate::{
     models::Vertex,
-    structs::{Camera, InstanceRaw, LightUniform, ModelVertex, lightUniform},
+    structs::{Camera, LightUniform, ModelVertex},
 };
 use {
     image::ImageBuffer,
@@ -159,22 +159,85 @@ impl State {
         let (camera_bind_group, camera_buffer, camera_controller, camera_uniform) =
             Camera::build_camera_setup(&camera, &device, &camera_bind_group_layout);
 
-        // Pípeline gráfico el orquestador, cadena de pasos que le cie a la GPU como convertir datos a pixeles en pantalla
-        let pipeline_render_layout: PipelineLayout =
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("pipeline_render_layout"),
-                bind_group_layouts: &[&texture_bind_group_layout, &camera_bind_group_layout],
-                immediate_size: 0,
-            });
-
         // Carga del modelo 3D, .obj dentro de la carpeta /res
         let obj_model: structs::Model =
-            resources::load_model("plant.obj", &device, &queue, &texture_bind_group_layout)
+            resources::load_model("one/plant.obj", &device, &queue, &texture_bind_group_layout)
+                .await
+                .unwrap();
+
+        let obj_light: structs::Model =
+            resources::load_model("sun/venus.obj", &device, &queue, &texture_bind_group_layout)
                 .await
                 .unwrap();
 
         let depth_texture: texture::Texture =
             texture::Texture::create_depth_texture(&device, &config, "depth_texture");
+
+        // Luz
+        let light_uniform: LightUniform = structs::LightUniform {
+            position: [2.0, 2.0, 2.0],
+            color: [1.0, 1.0, 1.0],
+            _padding: 0,
+            _padding2: 0,
+        };
+        let light_buffer: Buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("light_buffer"),
+            contents: bytemuck::cast_slice(&[light_uniform]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+        let light_bind_group_layout: BindGroupLayout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("light_bind_group_layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            });
+
+        let light_bind_group: BindGroup = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("light_bind_group"),
+            layout: &light_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: light_buffer.as_entire_binding(),
+            }],
+        });
+
+        let pipeline_render_layout: PipelineLayout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                bind_group_layouts: &[&texture_bind_group_layout, &camera_bind_group_layout],
+                label: Some("render_pipeline_layout"),
+                ..Default::default()
+            });
+
+        let light_pipeline_layout: PipelineLayout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("light_pipeline_layout"),
+                bind_group_layouts: &[&camera_bind_group_layout, &light_bind_group_layout],
+                ..Default::default()
+            });
+
+        let light_render_pipeline: RenderPipeline = {
+            let normal_shader: ShaderModuleDescriptor = wgpu::ShaderModuleDescriptor {
+                label: Some("normal_shader"),
+                source: wgpu::ShaderSource::Wgsl(include_str!("light.wgsl").into()),
+            };
+
+            LightUniform::create_render_pipeline(
+                &device,
+                &light_pipeline_layout,
+                config.format,
+                Some(texture::Texture::DEPTH_FORMAT),
+                &[ModelVertex::desc()],
+                normal_shader,
+            )
+        };
 
         let render_pipeline: RenderPipeline =
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -224,68 +287,6 @@ impl State {
                 multiview_mask: None,
             });
 
-        let light_uniform: lightUniform = structs::lightUniform {
-            position: [2.0, 2.0, 2.0],
-            color: [1.0, 1.0, 1.0],
-            _padding: 0,
-            _padding2: 0,
-        };
-        let light_buffer: Buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("light_buffer"),
-            contents: bytemuck::cast_slice(&[light_uniform]),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
-        let light_bind_group_layout: BindGroupLayout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("light_bind_group_layout"),
-                entries: &[wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                }],
-            });
-
-        let light_bind_group: BindGroup = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("light_bind_group"),
-            layout: &light_bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: light_buffer.as_entire_binding(),
-            }],
-        });
-
-        let render_pipeline_layout: PipelineLayout =
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                bind_group_layouts: &[
-                    &texture_bind_group_layout,
-                    &camera_bind_group_layout,
-                    &light_bind_group_layout,
-                ],
-                label: Some("render_pipeline_layout"),
-                ..Default::default()
-            });
-
-        let render_pipeline_light = {
-            let normal_shader: ShaderModuleDescriptor = wgpu::ShaderModuleDescriptor {
-                label: Some("normal_shader"),
-                source: wgpu::ShaderSource::Wgsl(include_str!("shaders.wgsl").into())
-            };
-
-            LightUniform::create_render_pipeline(
-                &device,
-                &render_pipeline_layout,
-                config.format,
-                Some(texture::Texture::DEPTH_FORMAT),
-                &[models::DrawModel::desc()],
-                shader,
-            );
-        }
-
         Ok(Self {
             surface,
             device,
@@ -299,10 +300,13 @@ impl State {
             camera_bind_group,
             camera_controller,
             obj_model,
+            obj_light,
             last_render_time: web_time::Instant::now(),
             depth_texture,
             light_uniform,
             light_buffer,
+            light_bind_group,
+            light_render_pipeline,
             window,
         })
     }
@@ -368,9 +372,21 @@ impl State {
                     multiview_mask: None,
                 });
 
-            render_pass.set_pipeline(&self.render_pipeline);
+            use models::DrawLight;
+            render_pass.set_pipeline(&self.light_render_pipeline);
+            render_pass.draw_light_model(
+                &self.obj_light,
+                &self.camera_bind_group,
+                &self.light_bind_group,
+            );
+
             use models::DrawModel;
-            render_pass.draw_model(&self.obj_model, &self.camera_bind_group);
+            render_pass.set_pipeline(&self.render_pipeline);
+            render_pass.draw_model(
+                &self.obj_model,
+                &self.camera_bind_group,
+                &self.light_bind_group,
+            );
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));

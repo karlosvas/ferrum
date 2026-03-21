@@ -32,6 +32,7 @@ pub async fn load_string(file_name: &str) -> anyhow::Result<String> {
             .join("res")
             .join(file_name);
 
+        log::debug!("Ruta absoluta resuelta: {:?}", path);
         std::fs::read_to_string(path)?
     };
 
@@ -76,6 +77,12 @@ pub async fn load_model(
     let obj_cursor: Cursor<String> = Cursor::new(obj_text);
     let mut obj_reder: BufReader<_> = BufReader::new(obj_cursor);
 
+    let parent_path: String = std::path::Path::new(file_name)
+        .parent()
+        .and_then(|p| p.to_str())
+        .unwrap_or("")
+        .to_string();
+
     let (models, obj_materials): (
         Vec<tobj::Model>,
         Result<Vec<tobj::Material>, tobj::LoadError>,
@@ -86,17 +93,39 @@ pub async fn load_model(
             single_index: true,
             ..Default::default()
         },
-        |mtl_path| async move {
-            log::debug!("Buscando mtl: {}", mtl_path);
-            let mat_text: String = load_string(&mtl_path).await.unwrap();
-            tobj::load_mtl_buf(&mut BufReader::new(Cursor::new(mat_text)))
+        |mtl_path| {
+            let parent_path: String = parent_path.clone();
+            async move {
+                let full_mtl_path: String = if parent_path.is_empty() {
+                    mtl_path.clone()
+                } else {
+                    std::path::Path::new(&parent_path)
+                        .join(&mtl_path)
+                        .to_str()
+                        .unwrap()
+                        .to_string()
+                };
+                log::debug!("Buscando mtl: {}", full_mtl_path);
+                let mat_text: String = load_string(&full_mtl_path).await.unwrap();
+                tobj::load_mtl_buf(&mut BufReader::new(Cursor::new(mat_text)))
+            }
         },
     )
     .await?;
 
     let mut materials: Vec<structs::Material> = Vec::new();
     for m in obj_materials? {
-        let diffuse_texture: Texture = match load_texture(&m.diffuse_texture, device, queue).await {
+        let full_mtl_path: String = if parent_path.is_empty() {
+            m.diffuse_texture.clone()
+        } else {
+            std::path::Path::new(&parent_path)
+                .join(&m.diffuse_texture)
+                .to_str()
+                .unwrap()
+                .to_string()
+        };
+
+        let diffuse_texture: Texture = match load_texture(&full_mtl_path, device, queue).await {
             anyhow::Result::Ok(t) => t,
             Err(e) => {
                 log::debug!("WARN: No se ha podido caragr la textura {}, {}", m.name, e);

@@ -17,10 +17,13 @@ pub struct State {
     pub camera_bind_group: wgpu::BindGroup,
     pub camera_controller: CameraController,
     pub obj_model: crate::structs::Model,
+    pub obj_light: crate::structs::Model,
     pub last_render_time: web_time::Instant,
     pub depth_texture: texture::Texture,
-    pub light_uniform: lightUniform,
+    pub light_uniform: LightUniform,
     pub light_buffer: Buffer,
+    pub light_bind_group: wgpu::BindGroup,
+    pub light_render_pipeline: wgpu::RenderPipeline,
     pub window: Arc<Window>,
 }
 
@@ -97,11 +100,10 @@ pub struct LightUniform {
     pub _padding2: u32,
 }
 
-
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 #[allow(dead_code)]
 pub struct InstanceRaw {
-    pub model: [[f32: 4], 4],
-    pub normals: [[f32; 3], 3]
+    pub model: [[f32; 4]; 4],
+    pub normals: [[f32; 3]; 3],
 }
