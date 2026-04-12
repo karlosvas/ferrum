@@ -70,6 +70,7 @@ pub struct ModelVertex {
     pub position: [f32; 3],
     pub text_cords: [f32; 2],
     pub normal: [f32; 3],
+    pub color: [f32; 3],
 }
 
 pub struct Mesh {
@@ -95,8 +96,8 @@ pub struct Model {
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct LightUniform {
     pub position: [f32; 3],
-    pub color: [f32; 3],
     pub _padding: u32,
+    pub color: [f32; 3],
     pub _padding2: u32,
 }
 

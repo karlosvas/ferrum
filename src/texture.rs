@@ -1,7 +1,7 @@
 use {
     anyhow::{Ok, Result},
     image::{DynamicImage, ImageBuffer},
-    wgpu::{Extent3d, Sampler, TextureView, wgt::TextureDescriptor},
+    wgpu::{Extent3d, Sampler, TextureView},
 };
 
 pub struct Texture {

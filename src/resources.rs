@@ -129,7 +129,7 @@ pub async fn load_model(
             anyhow::Result::Ok(t) => t,
             Err(e) => {
                 log::debug!("WARN: No se ha podido caragr la textura {}, {}", m.name, e);
-                panic!()
+                return Err(e.into());
             }
         };
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -157,48 +157,57 @@ pub async fn load_model(
     let meshes: Vec<structs::Mesh> = models
         .into_iter()
         .map(|m| {
+            let has_colors = !m.mesh.vertex_color.is_empty();
+            let has_normals = !m.mesh.normals.is_empty();
+            let has_texcoords = !m.mesh.texcoords.is_empty();
+            let has_normal_indices = !m.mesh.normal_indices.is_empty();
+
             let vertices = (0..m.mesh.positions.len() / 3)
                 .map(|i| {
-                    if m.mesh.normals.is_empty() {
-                        ModelVertex {
-                            position: [
-                                m.mesh.positions[i * 3],
-                                m.mesh.positions[i * 3 + 1],
-                                m.mesh.positions[i * 3 + 2],
-                            ],
-                            text_cords: [
-                                m.mesh.texcoords[i * 2],
-                                1.0 - m.mesh.texcoords[i * 2 + 1],
-                            ],
-                            normal: [0.0, 0.0, 0.0],
-                        }
+                    let pi = i * 3;
+
+                    let position = [
+                        m.mesh.positions[pi],
+                        m.mesh.positions[pi + 1],
+                        m.mesh.positions[pi + 2],
+                    ];
+
+                    let text_cords = if has_texcoords {
+                        [m.mesh.texcoords[i * 2], 1.0 - m.mesh.texcoords[i * 2 + 1]]
                     } else {
-                        let normal: [f32; 3] = if m.mesh.normal_indices.is_empty() {
-                            [
-                                m.mesh.normals[i * 3],
-                                m.mesh.normals[i * 3 + 1],
-                                m.mesh.normals[i * 3 + 2],
-                            ]
+                        [0.0, 0.0]
+                    };
+
+                    let normal = if has_normals {
+                        let ni = if has_normal_indices {
+                            m.mesh.normal_indices[i] as usize * 3
                         } else {
-                            let ni: usize = m.mesh.normal_indices[i] as usize;
-                            [
-                                m.mesh.normals[ni * 3],
-                                m.mesh.normals[ni * 3 + 1],
-                                m.mesh.normals[ni * 3 + 2],
-                            ]
+                            pi
                         };
-                        ModelVertex {
-                            position: [
-                                m.mesh.positions[i * 3],
-                                m.mesh.positions[i * 3 + 1],
-                                m.mesh.positions[i * 3 + 2],
-                            ],
-                            text_cords: [
-                                m.mesh.texcoords[i * 2],
-                                1.0 - m.mesh.texcoords[i * 2 + 1],
-                            ],
-                            normal,
-                        }
+                        [
+                            m.mesh.normals[ni],
+                            m.mesh.normals[ni + 1],
+                            m.mesh.normals[ni + 2],
+                        ]
+                    } else {
+                        [0.0, 0.0, 0.0]
+                    };
+
+                    let color = if has_colors {
+                        [
+                            m.mesh.vertex_color[pi],
+                            m.mesh.vertex_color[pi + 1],
+                            m.mesh.vertex_color[pi + 2],
+                        ]
+                    } else {
+                        [1.0, 1.0, 1.0]
+                    };
+
+                    ModelVertex {
+                        position,
+                        text_cords,
+                        normal,
+                        color,
                     }
                 })
                 .collect::<Vec<_>>();

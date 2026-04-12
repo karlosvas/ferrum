@@ -6,8 +6,8 @@ impl LightUniform {
     fn new(position: [f32; 3], color: [f32; 3], _padding: u32, _padding2: u32) -> Self {
         Self {
             position,
-            color,
             _padding,
+            color,
             _padding2,
         }
     }
@@ -49,7 +49,7 @@ impl LightUniform {
             }),
             multisample: wgpu::MultisampleState {
                 count: 1,
-                mask: 0,
+                mask: !0,
                 alpha_to_coverage_enabled: false,
             },
             fragment: Some(wgpu::FragmentState {

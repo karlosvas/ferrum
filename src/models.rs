@@ -26,6 +26,11 @@ impl Vertex for ModelVertex {
                     shader_location: 2,
                     format: wgpu::VertexFormat::Float32x3,
                 },
+                wgpu::VertexAttribute {
+                    offset: mem::size_of::<[f32; 8]>() as wgpu::BufferAddress,
+                    shader_location: 3,
+                    format: wgpu::VertexFormat::Float32x3,
+                },
             ],
         }
     }
@@ -164,10 +169,12 @@ where
         light_bind_group: &'b wgpu::BindGroup,
     ) {
         for mesh in &model.meshes {
+            let material = &model.materials[mesh.material];
             self.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
             self.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
             self.set_bind_group(0, camera_bind_group, &[]);
             self.set_bind_group(1, light_bind_group, &[]);
+            self.set_bind_group(2, &material.bind_group, &[]);
             self.draw_indexed(0..mesh.indices, 0, 0..1);
         }
     }

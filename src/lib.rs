@@ -1,5 +1,4 @@
 mod camera;
-mod geometry;
 mod light;
 mod models;
 mod resources;
@@ -91,7 +90,6 @@ impl State {
             .copied()
             .unwrap_or(surface_caps.formats[0]);
 
-        // Definir como se renderiza añadiendo uan configuración (swapchain)
         let config: SurfaceConfiguration<Vec<TextureFormat>> = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,
@@ -103,7 +101,6 @@ impl State {
             view_formats: vec![],
         };
 
-        // Bind group de texturas
         let texture_bind_group_layout: BindGroupLayout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("texture_bind_group_layout"),
@@ -127,10 +124,8 @@ impl State {
                 ],
             });
 
-        // Obtenemos el shader que gestiona como se deve pintar en pantalla nuestros vértices
         let shader: ShaderModule = device.create_shader_module(wgpu::include_wgsl!("shaders.wgsl"));
 
-        // Configuracion inicial de la cámara
         let camera: Camera = Camera {
             eye: (0.0, 4.0, 10.0).into(),
             target: (0.0, 3.0, 0.0).into(),
@@ -160,10 +155,14 @@ impl State {
             Camera::build_camera_setup(&camera, &device, &camera_bind_group_layout);
 
         // Carga del modelo 3D, .obj dentro de la carpeta /res
-        let obj_model: structs::Model =
-            resources::load_model("one/plant.obj", &device, &queue, &texture_bind_group_layout)
-                .await
-                .unwrap();
+        let obj_model: structs::Model = resources::load_model(
+            "plant/plant.obj",
+            &device,
+            &queue,
+            &texture_bind_group_layout,
+        )
+        .await
+        .unwrap();
 
         let obj_light: structs::Model =
             resources::load_model("sun/venus.obj", &device, &queue, &texture_bind_group_layout)
@@ -173,11 +172,11 @@ impl State {
         let depth_texture: texture::Texture =
             texture::Texture::create_depth_texture(&device, &config, "depth_texture");
 
-        // Luz
+        // Ligtht
         let light_uniform: LightUniform = structs::LightUniform {
             position: [2.0, 2.0, 2.0],
-            color: [1.0, 1.0, 1.0],
             _padding: 0,
+            color: [1.0, 1.0, 1.0],
             _padding2: 0,
         };
         let light_buffer: Buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -211,7 +210,11 @@ impl State {
 
         let pipeline_render_layout: PipelineLayout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                bind_group_layouts: &[&texture_bind_group_layout, &camera_bind_group_layout],
+                bind_group_layouts: &[
+                    &texture_bind_group_layout,
+                    &camera_bind_group_layout,
+                    &light_bind_group_layout,
+                ],
                 label: Some("render_pipeline_layout"),
                 ..Default::default()
             });
@@ -219,7 +222,11 @@ impl State {
         let light_pipeline_layout: PipelineLayout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("light_pipeline_layout"),
-                bind_group_layouts: &[&camera_bind_group_layout, &light_bind_group_layout],
+                bind_group_layouts: &[
+                    &camera_bind_group_layout,
+                    &light_bind_group_layout,
+                    &texture_bind_group_layout,
+                ],
                 ..Default::default()
             });
 
@@ -416,11 +423,13 @@ impl State {
             bytemuck::cast_slice(&[self.camera_uniform]),
         );
 
-        let old_position: cgmath::Vector3<_> = self.light_uniform.position.into();
-        self.light_uniform.position =
-            (cgmath::Quaternion::from_axis_angle((0.0, 1.0, 0.0).into(), cgmath::Deg(1.0))
-                * old_position)
-                .into();
+        // Light rotation animation
+        let old_position: cgmath::Vector3<f32> = self.light_uniform.position.into();
+        self.light_uniform.position = (cgmath::Quaternion::from_axis_angle(
+            (0.0, 1.0, 0.0).into(),
+            cgmath::Deg(60.0 * dt.as_secs_f32()),
+        ) * old_position)
+            .into();
 
         self.queue.write_buffer(
             &self.light_buffer,
