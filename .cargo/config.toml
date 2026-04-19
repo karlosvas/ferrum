@@ -1,3 +1,5 @@
 [alias]
 xtask = "run --manifest-path xtask/Cargo.toml --"
-compile-web = "xtask compile-web"
+
+[target.aarch64-unknown-linux-gnu]
+linker = "aarch64-linux-gnu-gcc"

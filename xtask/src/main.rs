@@ -37,10 +37,27 @@ fn compile_and_publish_web() {
 
 fn compile_rpi() {
     let status = Command::new("cargo")
-        .args(["build", "--release", "--features", "rpi"])
+        .args([
+            "build",
+            "--release",
+            "--target",
+            "aarch64-unknown-linux-gnu",
+        ])
         .status()
         .expect(&"cargo build failed".red().to_string());
-
     assert!(status.success(), "cargo build failed");
-    println!("{}", "✓ Compiled for Raspberry Pi".green());
+    println!("{}", "✓ Compiled for aarch64".green());
+
+    let host: String = std::env::var("RPI_HOST").expect("RPI_HOST not set");
+    let path: String = std::env::var("RPI_PATH").expect("RPI_PATH not set");
+    let dest: String = format!("{}:{}", host, path);
+    let status: ExitStatus = Command::new("scp")
+        .args([
+            "target/aarch64-unknown-linux-gnu/release/ferrum",
+            dest.as_str(),
+        ])
+        .status()
+        .expect(&"scp failed".red().to_string());
+    assert!(status.success(), "scp deploy failed");
+    println!("{}", "✓ Deployed to Raspberry Pi".green());
 }

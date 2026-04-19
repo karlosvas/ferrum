@@ -2,7 +2,6 @@ use {
     anyhow::{Ok, Result},
     fs_extra::{copy_items, dir::CopyOptions},
     std::env,
-    winres::WindowsResource,
 };
 
 fn main() -> Result<()> {
@@ -19,9 +18,13 @@ fn main() -> Result<()> {
         copy_items(&paths_to_copy, out_dir, &copy_options)?;
 
         if std::env::var("CARGO_CFG_TARGET_OS").unwrap() == "windows" {
-            let mut res: WindowsResource = winres::WindowsResource::new();
-            res.set_icon("./assets/logo.ico");
-            res.compile().unwrap();
+            #[cfg(target_os = "windows")]
+            {
+                use winres::WindowsResource;
+                let mut res: WindowsResource = winres::WindowsResource::new();
+                res.set_icon("./assets/logo.ico");
+                res.compile().unwrap();
+            }
         }
     }
 
