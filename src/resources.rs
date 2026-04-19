@@ -12,10 +12,7 @@ use wgpu::{Buffer, util::DeviceExt};
 
 #[cfg(target_arch = "wasm32")]
 fn format_url(file_name: &str) -> reqwest::Url {
-    let window = web_sys::window().unwrap();
-    let location = window.location();
-    let mut origin = location.origin().unwrap();
-    let base = reqwest::Url::parse(&format!("{}/res/", origin)).unwrap();
+    let base = reqwest::Url::parse("https://pub-72c0c8dd15e249a0a448095fb52cc05c.r2.dev/").unwrap();
     base.join(file_name).unwrap()
 }
 

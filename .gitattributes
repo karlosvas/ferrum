@@ -1,4 +1,4 @@
-# 1. Comportamiento por defecto: detectar texto y forzar LF
+# Comportamiento por defecto: detectar texto y forzar LF
 * text=auto eol=lf
 
 # Asegurar que archivos de código siempre sean LF

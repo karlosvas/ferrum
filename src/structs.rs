@@ -5,7 +5,7 @@ use winit::event_loop::EventLoopProxy;
 use {crate::texture, std::sync::Arc, winit::window::Window};
 
 pub struct State {
-    pub surface: wgpu::Surface<'static>,
+    pub window_surface: wgpu::Surface<'static>,
     pub device: wgpu::Device,
     pub queue: wgpu::Queue,
     pub config: wgpu::SurfaceConfiguration,

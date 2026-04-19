@@ -3664,6 +3664,7 @@ name = "xtask"
 version = "0.1.0"
 dependencies = [
  "colored",
+ "fs_extra",
 ]
 
 [[package]]

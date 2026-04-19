@@ -39,31 +39,30 @@ use {
 
 impl State {
     pub async fn new(window: Arc<Window>) -> anyhow::Result<Self> {
-        // Tamaño de la pantallas
-        let size: PhysicalSize<u32> = window.inner_size();
+        let window_size: PhysicalSize<u32> = window.inner_size();
 
-        // Nuestro punto de entarda para nuestro bakend
-        let instance: Instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+        let backend_instance: Instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
             #[cfg(target_arch = "wasm32")]
             backends: wgpu::Backends::GL | wgpu::Backends::BROWSER_WEBGPU,
-            #[cfg(not(target_arch = "wasm32"))]
+            #[cfg(all(not(target_arch = "wasm32"), not(feature = "rpi")))]
             backends: wgpu::Backends::PRIMARY,
+            #[cfg(all(not(target_arch = "wasm32"), feature = "rpi"))]
+            backends: wgpu::Backends::GL,
             ..Default::default()
         });
 
-        // Representa la superficie de la ventana
-        let surface: Surface = instance.create_surface(window.clone()).unwrap();
+        let window_surface: Surface = backend_instance.create_surface(window.clone())?;
 
-        // Representa la GPU física del sistema
-        let adapter: Adapter = instance
+        // Representation of the system's physical GPU
+        let adapter: Adapter = backend_instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::default(),
                 force_fallback_adapter: false,
-                compatible_surface: Some(&surface),
+                compatible_surface: Some(&window_surface),
             })
             .await?;
 
-        // Interfaz lógica para crear recursos y una cola de comandos que se envian a la GPU
+        // Logic interface for creating resources and a command queue that is sent to the GPU
         let (device, queue): (Device, Queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: None,
@@ -79,10 +78,10 @@ impl State {
             })
             .await?;
 
-        // Una consulta dinamica de las capacidades que varía segun el adaptador que tengas
-        let surface_caps: SurfaceCapabilities = surface.get_capabilities(&adapter);
+        // A dynamic query of the capabilities that varies according to the adapter you have
+        let surface_caps: SurfaceCapabilities = window_surface.get_capabilities(&adapter);
 
-        // Define como se almacenan los píxeles en memoria
+        // Define how pixels are stored in memory
         let surface_format: TextureFormat = surface_caps
             .formats
             .iter()
@@ -90,11 +89,12 @@ impl State {
             .copied()
             .unwrap_or(surface_caps.formats[0]);
 
+        // Describe the surface configuration, which includes the format, size, and present mode
         let config: SurfaceConfiguration<Vec<TextureFormat>> = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,
-            width: size.width,
-            height: size.height,
+            width: window_size.width,
+            height: window_size.height,
             present_mode: surface_caps.present_modes[0],
             desired_maximum_frame_latency: 2,
             alpha_mode: surface_caps.alpha_modes[0],
@@ -172,7 +172,7 @@ impl State {
         let depth_texture: texture::Texture =
             texture::Texture::create_depth_texture(&device, &config, "depth_texture");
 
-        // Ligtht
+        // Light section
         let light_uniform: LightUniform = structs::LightUniform {
             position: [2.0, 2.0, 2.0],
             _padding: 0,
@@ -295,7 +295,7 @@ impl State {
             });
 
         Ok(Self {
-            surface,
+            window_surface,
             device,
             queue,
             config,
@@ -323,7 +323,7 @@ impl State {
             self.config.height = height;
             self.config.width = width;
 
-            self.surface.configure(&self.device, &self.config);
+            self.window_surface.configure(&self.device, &self.config);
 
             self.camera.aspect = self.config.width as f32 / self.config.height as f32;
 
@@ -341,7 +341,7 @@ impl State {
             return Ok(());
         }
 
-        let ouput: SurfaceTexture = self.surface.get_current_texture()?;
+        let ouput: SurfaceTexture = self.window_surface.get_current_texture()?;
 
         let view: TextureView = ouput
             .texture
