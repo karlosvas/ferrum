@@ -1,0 +1,8 @@
+[package]
+name = "rpi"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+linux-embedded-hal = "0.4"
+tsl2591-rs = "0.1"

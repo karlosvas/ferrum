@@ -1,0 +1,9 @@
+[package]
+name = "xtask"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+colored = "2.0"
+fs_extra = "1.2"
+dotenvy = "0.15"

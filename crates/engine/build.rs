@@ -1,11 +1,19 @@
 use {
     anyhow::{Ok, Result},
     fs_extra::{copy_items, dir::CopyOptions},
-    std::env,
+    std::{env, path::PathBuf},
 };
 
+fn workspace_root() -> PathBuf {
+    PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap())
+        .join("../..")
+        .canonicalize()
+        .unwrap()
+}
+
 fn main() -> Result<()> {
-    println!("cargo:rerun-if-changed=res");
+    let root = workspace_root();
+    println!("cargo:rerun-if-changed={}", root.join("res").display());
 
     let target: String = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
 
@@ -13,8 +21,9 @@ fn main() -> Result<()> {
         let out_dir: String = env::var("OUT_DIR")?;
         let mut copy_options: CopyOptions = CopyOptions::new();
         copy_options.overwrite = true;
-        let mut paths_to_copy: Vec<&str> = Vec::new();
-        paths_to_copy.push("res/");
+        let paths_to_copy = vec![root.join("crates/engine/res")];
+        let paths_to_copy: Vec<&std::path::Path> =
+            paths_to_copy.iter().map(|p| p.as_path()).collect();
         copy_items(&paths_to_copy, out_dir, &copy_options)?;
 
         if std::env::var("CARGO_CFG_TARGET_OS").unwrap() == "windows" {
@@ -22,7 +31,7 @@ fn main() -> Result<()> {
             {
                 use winres::WindowsResource;
                 let mut res: WindowsResource = winres::WindowsResource::new();
-                res.set_icon("./assets/logo.ico");
+                res.set_icon(root.join("assets/logo.ico").to_str().unwrap());
                 res.compile().unwrap();
             }
         }

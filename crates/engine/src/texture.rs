@@ -133,7 +133,6 @@ impl Texture {
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum CompareFunction {
     Undefined = 0,
     Never = 1,
