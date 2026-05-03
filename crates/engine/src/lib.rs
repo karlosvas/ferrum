@@ -5,6 +5,7 @@ mod resources;
 mod structs;
 mod texture;
 
+use cgmath::Rotation3;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 use wgpu::{BindGroup, Buffer, ShaderModuleDescriptor, util::DeviceExt};
@@ -178,13 +179,11 @@ impl State {
             color: [1.0, 1.0, 1.0],
             _padding2: 0,
         };
-
         let light_buffer: Buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("light_buffer"),
             contents: bytemuck::cast_slice(&[light_uniform]),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
-
         let light_bind_group_layout: BindGroupLayout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("light_bind_group_layout"),
@@ -258,21 +257,12 @@ impl State {
                     // buffers: &[Vertex::desc()],
                     buffers: &[ModelVertex::desc()],
                 },
-                fragment: Some(wgpu::FragmentState {
-                    module: &shader,
-                    entry_point: Some("fs_main"),
-                    compilation_options: wgpu::PipelineCompilationOptions::default(),
-                    targets: &[Some(wgpu::ColorTargetState {
-                        format: config.format,
-                        blend: Some(wgpu::BlendState::REPLACE),
-                        write_mask: wgpu::ColorWrites::ALL,
-                    })],
-                }),
                 primitive: wgpu::PrimitiveState {
                     topology: wgpu::PrimitiveTopology::TriangleList,
                     strip_index_format: None,
                     front_face: wgpu::FrontFace::Ccw,
-                    cull_mode: Some(wgpu::Face::Back),
+                    // cull_mode: Some(wgpu::Face::Back),
+                    cull_mode: None,
                     unclipped_depth: false,
                     polygon_mode: wgpu::PolygonMode::Fill,
                     conservative: false,
@@ -284,9 +274,24 @@ impl State {
                     stencil: wgpu::StencilState::default(),
                     bias: wgpu::DepthBiasState::default(),
                 }),
-                multisample: wgpu::MultisampleState::default(),
-                multiview_mask: None,
+                multisample: wgpu::MultisampleState {
+                    count: 1,
+                    mask: !0,
+                    alpha_to_coverage_enabled: false,
+                },
+                // Fragment shader
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: Some("fs_main"),
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: config.format,
+                        blend: Some(wgpu::BlendState::REPLACE),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                }),
                 cache: None,
+                multiview_mask: None,
             });
 
         Ok(Self {
@@ -311,6 +316,136 @@ impl State {
             light_render_pipeline,
             window,
         })
+    }
+
+    pub fn resize(&mut self, height: u32, width: u32) {
+        if height > 0 && width > 0 {
+            self.config.height = height;
+            self.config.width = width;
+
+            self.window_surface.configure(&self.device, &self.config);
+
+            self.camera.aspect = self.config.width as f32 / self.config.height as f32;
+
+            self.depth_texture =
+                texture::Texture::create_depth_texture(&self.device, &self.config, "depth_texture");
+
+            self.is_surface_configuration = true;
+        }
+    }
+
+    pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+        self.window.request_redraw();
+
+        if !self.is_surface_configuration {
+            return Ok(());
+        }
+
+        let ouput: SurfaceTexture = self.window_surface.get_current_texture()?;
+
+        let view: TextureView = ouput
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+
+        let mut encoder: CommandEncoder =
+            self.device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("encoder"),
+                });
+
+        {
+            let mut render_pass: RenderPass =
+                encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("render_pass"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &view,
+                        depth_slice: None,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                        view: &self.depth_texture.view,
+                        depth_ops: Some(wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(1.0),
+                            store: wgpu::StoreOp::Store,
+                        }),
+                        stencil_ops: None,
+                    }),
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                    multiview_mask: None,
+                });
+
+            use models::DrawLight;
+            render_pass.set_pipeline(&self.light_render_pipeline);
+            render_pass.draw_light_model(
+                &self.obj_light,
+                &self.camera_bind_group,
+                &self.light_bind_group,
+            );
+
+            use models::DrawModel;
+            render_pass.set_pipeline(&self.render_pipeline);
+            render_pass.draw_model(
+                &self.obj_model,
+                &self.camera_bind_group,
+                &self.light_bind_group,
+            );
+        }
+
+        self.queue.submit(std::iter::once(encoder.finish()));
+        ouput.present();
+
+        Ok(())
+    }
+
+    pub fn handle_key(&mut self, event_loop: &ActiveEventLoop, key: KeyCode, is_pressed: bool) {
+        if key == KeyCode::Escape && is_pressed {
+            #[cfg(not(target_arch = "wasm32"))]
+            event_loop.exit();
+        } else {
+            self.camera_controller.handle_key(key, is_pressed);
+        }
+    }
+
+    pub fn update(&mut self) {
+        let now: web_time::Instant = web_time::Instant::now();
+        let dt: web_time::Duration = now - self.last_render_time;
+        self.last_render_time = now;
+        self.camera_controller.update_camera(&mut self.camera, dt);
+        self.camera_uniform.update_view_proj(&self.camera);
+        self.queue.write_buffer(
+            &self.camera_buffer,
+            0,
+            bytemuck::cast_slice(&[self.camera_uniform]),
+        );
+
+        // Light rotation animation
+        let old_position: cgmath::Vector3<f32> = self.light_uniform.position.into();
+        self.light_uniform.position = (cgmath::Quaternion::from_axis_angle(
+            (0.0, 1.0, 0.0).into(),
+            cgmath::Deg(60.0 * dt.as_secs_f32()),
+        ) * old_position)
+            .into();
+
+        self.queue.write_buffer(
+            &self.light_buffer,
+            0,
+            bytemuck::cast_slice(&[self.light_uniform]),
+        );
+    }
+}
+
+impl App {
+    pub fn new(#[cfg(target_arch = "wasm32")] proxy: EventLoopProxy<State>) -> Self {
+        Self {
+            state: None,
+            #[cfg(target_arch = "wasm32")]
+            proxy: Some(proxy),
+        }
     }
 }
 
@@ -427,16 +562,31 @@ impl ApplicationHandler<State> for App {
 }
 
 pub fn run() -> anyhow::Result<()> {
-    env_logger::init();
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        env_logger::init();
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        console_log::init_with_level(log::Level::Info).unwrap_throw();
+    }
 
-    let event_loop: EventLoop<State> = EventLoop::with_user_event().build()?;
-    let mut app: App = App {
-        state: None,
+    let event_loop: EventLoop<State> = EventLoop::<State>::with_user_event().build()?;
+    let mut app: App = App::new(
         #[cfg(target_arch = "wasm32")]
-        proxy: None,
-    };
-
+        {
+            event_loop.create_proxy()
+        },
+    );
     event_loop.run_app(&mut app)?;
 
+    Ok(())
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen(start)]
+pub fn run_web() -> Result<(), wasm_bindgen::JsValue> {
+    console_error_panic_hook::set_once();
+    run().unwrap_throw();
     Ok(())
 }

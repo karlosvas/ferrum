@@ -31,8 +31,8 @@ fn main() -> Result<()> {
             {
                 use winres::WindowsResource;
                 let mut res: WindowsResource = winres::WindowsResource::new();
-                res.set_icon(root.join("assets/logo.ico").to_str().unwrap());
-                res.compile().unwrap();
+                res.set_icon(root.join("crates/engine/assets/logo.ico").to_str().unwrap());
+                res.compile()?;
             }
         }
     }
