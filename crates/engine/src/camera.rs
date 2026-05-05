@@ -58,11 +58,13 @@ impl CameraUniform {
         use cgmath::SquareMatrix;
         Self {
             view_proj: cgmath::Matrix4::identity().into(),
+            view_position: [0.0, 0.0, 0.0, 1.0],
         }
     }
 
     pub fn update_view_proj(&mut self, camera: &Camera) {
         self.view_proj = camera.build_view_projection_matrix().into();
+        self.view_position = [camera.eye.x, camera.eye.y, camera.eye.z, 1.0];
     }
 }
 

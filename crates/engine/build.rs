@@ -19,12 +19,13 @@ fn main() -> Result<()> {
 
     if target != "wasm32" {
         let out_dir: String = env::var("OUT_DIR")?;
+
         let mut copy_options: CopyOptions = CopyOptions::new();
         copy_options.overwrite = true;
         let paths_to_copy = vec![root.join("crates/engine/res")];
         let paths_to_copy: Vec<&std::path::Path> =
             paths_to_copy.iter().map(|p| p.as_path()).collect();
-        copy_items(&paths_to_copy, out_dir, &copy_options)?;
+        copy_items(&paths_to_copy, &out_dir, &copy_options)?;
 
         if std::env::var("CARGO_CFG_TARGET_OS").unwrap() == "windows" {
             #[cfg(target_os = "windows")]

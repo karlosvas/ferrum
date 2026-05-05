@@ -1,5 +1,6 @@
 mod camera;
 mod light;
+mod material;
 mod models;
 mod resources;
 mod structs;
@@ -13,8 +14,8 @@ use wgpu::{BindGroup, Buffer, ShaderModuleDescriptor, util::DeviceExt};
 use winit::event_loop::EventLoopProxy;
 
 use crate::{
-    models::Vertex,
-    structs::{Camera, LightUniform, ModelVertex},
+    models::{ModelVertex, Vertex},
+    structs::{Camera, LightUniform},
 };
 use {
     image::ImageBuffer,
@@ -105,6 +106,7 @@ impl State {
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("texture_bind_group_layout"),
                 entries: &[
+                    // Texture
                     wgpu::BindGroupLayoutEntry {
                         binding: 0,
                         visibility: wgpu::ShaderStages::FRAGMENT,
@@ -121,10 +123,28 @@ impl State {
                         ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                         count: None,
                     },
+                    // Normal Map
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            multisampled: false,
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 3,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
                 ],
             });
 
-        let shader: ShaderModule = device.create_shader_module(wgpu::include_wgsl!("shaders.wgsl"));
+        let shader: ShaderModule =
+            device.create_shader_module(wgpu::include_wgsl!("shaders/shaders.wgsl"));
 
         let camera: Camera = Camera {
             eye: (0.0, 4.0, 10.0).into(),
@@ -162,7 +182,7 @@ impl State {
             &texture_bind_group_layout,
         )
         .await
-        .unwrap();
+        .expect("Error cargando plant/plant.obj");
 
         let obj_light: structs::Model =
             resources::load_model("sun/venus.obj", &device, &queue, &texture_bind_group_layout)
@@ -176,7 +196,7 @@ impl State {
         let light_uniform: LightUniform = structs::LightUniform {
             position: [2.0, 2.0, 2.0],
             _padding: 0,
-            color: [1.0, 1.0, 1.0],
+            color: [1.0, 0.8, 0.6],
             _padding2: 0,
         };
         let light_buffer: Buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -233,7 +253,7 @@ impl State {
         let light_render_pipeline: RenderPipeline = {
             let normal_shader: ShaderModuleDescriptor = wgpu::ShaderModuleDescriptor {
                 label: Some("normal_shader"),
-                source: wgpu::ShaderSource::Wgsl(include_str!("light.wgsl").into()),
+                source: wgpu::ShaderSource::Wgsl(include_str!("shaders/light.wgsl").into()),
             };
 
             LightUniform::create_render_pipeline(
@@ -261,8 +281,8 @@ impl State {
                     topology: wgpu::PrimitiveTopology::TriangleList,
                     strip_index_format: None,
                     front_face: wgpu::FrontFace::Ccw,
-                    // cull_mode: Some(wgpu::Face::Back),
-                    cull_mode: None,
+                    cull_mode: Some(wgpu::Face::Back),
+                    // cull_mode: None,
                     unclipped_depth: false,
                     polygon_mode: wgpu::PolygonMode::Fill,
                     conservative: false,

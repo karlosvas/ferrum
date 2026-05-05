@@ -4,11 +4,14 @@ use std::{
 };
 
 use crate::{
-    structs::{self, Model, ModelVertex},
+    material,
+    models::ModelVertex,
+    structs::{self, Model},
     texture::{self, Texture},
 };
 use anyhow::Ok;
-use wgpu::{Buffer, util::DeviceExt};
+use cgmath::{Vector2, Vector3};
+use wgpu::{BindGroup, Buffer, util::DeviceExt};
 
 #[cfg(target_arch = "wasm32")]
 fn format_url(file_name: &str) -> reqwest::Url {
@@ -17,6 +20,8 @@ fn format_url(file_name: &str) -> reqwest::Url {
 }
 
 pub async fn load_string(file_name: &str) -> anyhow::Result<String> {
+    log::debug!("Intentando abrir: {:?}", file_name);
+
     #[cfg(target_arch = "wasm32")]
     let text = {
         let url = format_url(file_name);
@@ -110,7 +115,7 @@ pub async fn load_model(
     )
     .await?;
 
-    let mut materials: Vec<structs::Material> = Vec::new();
+    let mut materials: Vec<material::Material> = Vec::new();
     for m in obj_materials? {
         let full_mtl_path: String = if parent_path.is_empty() {
             m.diffuse_texture.clone()
@@ -122,14 +127,22 @@ pub async fn load_model(
                 .to_string()
         };
 
-        let diffuse_texture: Texture = match load_texture(&full_mtl_path, device, queue).await {
-            anyhow::Result::Ok(t) => t,
-            Err(e) => {
-                log::debug!("WARN: No se ha podido caragr la textura {}, {}", m.name, e);
-                return Err(e.into());
-            }
+        let full_normal_path: String = if m.normal_texture.is_empty() {
+            full_mtl_path.clone()
+        } else if parent_path.is_empty() {
+            m.normal_texture.clone()
+        } else {
+            std::path::Path::new(&parent_path)
+                .join(&m.normal_texture)
+                .to_str()
+                .unwrap()
+                .to_string()
         };
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+
+        let diffuse_texture: Texture = load_texture(&full_mtl_path, device, queue).await?;
+        let normal_texture: Texture = load_texture(&full_normal_path, device, queue).await?;
+
+        let bind_group: BindGroup = device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout,
             entries: &[
                 wgpu::BindGroupEntry {
@@ -140,13 +153,22 @@ pub async fn load_model(
                     binding: 1,
                     resource: wgpu::BindingResource::Sampler(&diffuse_texture.sampler),
                 },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(&normal_texture.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::Sampler(&normal_texture.sampler),
+                },
             ],
             label: None,
         });
 
-        materials.push(structs::Material {
+        materials.push(material::Material {
             name: m.name,
             diffuse_texture,
+            normal_texture,
             bind_group,
         });
     }
@@ -159,7 +181,7 @@ pub async fn load_model(
             let has_texcoords = !m.mesh.texcoords.is_empty();
             let has_normal_indices = !m.mesh.normal_indices.is_empty();
 
-            let vertices = (0..m.mesh.positions.len() / 3)
+            let mut vertices = (0..m.mesh.positions.len() / 3)
                 .map(|i| {
                     let pi = i * 3;
 
@@ -200,11 +222,17 @@ pub async fn load_model(
                         [1.0, 1.0, 1.0]
                     };
 
+                    let tangent = [0.0, 0.0, 0.0];
+
+                    let bitangent = [0.0, 0.0, 0.0];
+
                     ModelVertex {
                         position,
                         text_cords,
                         normal,
                         color,
+                        tangent,
+                        bitangent,
                     }
                 })
                 .collect::<Vec<_>>();
@@ -212,6 +240,72 @@ pub async fn load_model(
             log::debug!("Num vertices: {}", vertices.len());
             log::debug!("Num indices: {}", m.mesh.indices.len());
             log::debug!("Max index: {}", m.mesh.indices.iter().max().unwrap());
+
+            let indices = &m.mesh.indices;
+            let mut trangles_included = vec![0; vertices.len()];
+
+            for c in indices.chunks(3) {
+                let v0: ModelVertex = vertices[c[0] as usize];
+                let v1: ModelVertex = vertices[c[1] as usize];
+                let v2: ModelVertex = vertices[c[2] as usize];
+
+                let pos0: Vector3<f32> = v0.position.into();
+                let pos1: Vector3<f32> = v1.position.into();
+                let pos2: Vector3<f32> = v2.position.into();
+
+                let uv0: Vector2<f32> = v0.text_cords.into();
+                let uv1: Vector2<f32> = v1.text_cords.into();
+                let uv2: Vector2<f32> = v2.text_cords.into();
+
+                // Calculate the edges of the triangle
+                let delta_pos1: Vector3<f32> = pos1 - pos0;
+                let delta_pos2: Vector3<f32> = pos2 - pos0;
+
+                // This will give us a direction to calculate the
+                // tangent and bitangent
+                let delta_uv1: Vector2<f32> = uv1 - uv0;
+                let delta_uv2: Vector2<f32> = uv2 - uv0;
+
+                // Solving the following system of equations will
+                // give us the tangent and bitangent.
+                //     delta_pos1 = delta_uv1.x * T + delta_u.y * B
+                //     delta_pos2 = delta_uv2.x * T + delta_uv2.y * B
+
+                let r: f32 = 1.0 / (delta_uv1.x * delta_uv2.y - delta_uv1.y * delta_uv2.x);
+                let tanget: Vector3<f32> =
+                    (delta_pos1 * delta_uv2.y - delta_pos2 * delta_uv1.y) * r;
+                let bitanget: Vector3<f32> =
+                    (delta_pos2 * delta_uv1.x - delta_pos1 * delta_uv2.x) * -r;
+
+                // Tangent
+                vertices[c[0] as usize].tangent =
+                    (tanget + Vector3::from(vertices[c[0] as usize].tangent)).into();
+                vertices[c[1] as usize].tangent =
+                    (tanget + Vector3::from(vertices[c[1] as usize].tangent)).into();
+                vertices[c[2] as usize].tangent =
+                    (tanget + Vector3::from(vertices[c[2] as usize].tangent)).into();
+
+                // Bitangent
+                vertices[c[0] as usize].bitangent =
+                    (bitanget + Vector3::from(vertices[c[0] as usize].bitangent)).into();
+                vertices[c[1] as usize].bitangent =
+                    (bitanget + Vector3::from(vertices[c[1] as usize].bitangent)).into();
+                vertices[c[2] as usize].bitangent =
+                    (bitanget + Vector3::from(vertices[c[2] as usize].bitangent)).into();
+
+                // Used to average the tangents/bitangents
+                trangles_included[c[0] as usize] += 1;
+                trangles_included[c[1] as usize] += 1;
+                trangles_included[c[2] as usize] += 1;
+            }
+
+            // Average the tangents/bitangents
+            for (i, n) in trangles_included.into_iter().enumerate() {
+                let denom: f32 = 1.0 / n as f32;
+                let v: &mut ModelVertex = &mut vertices[i];
+                v.tangent = (Vector3::from(v.tangent) * denom).into();
+                v.bitangent = (Vector3::from(v.bitangent) * denom).into();
+            }
 
             let vertex_buffer: Buffer =
                 device.create_buffer_init(&wgpu::util::BufferInitDescriptor {

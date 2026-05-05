@@ -22,7 +22,8 @@ web-time = "1.1.0"
 [dependencies.image]
 version = "0.24"
 default-features = false
-features = ["png", "jpeg", "ico"]
+features = ["png", "jpeg", "ico", "hdr"]
+
 
 [build-dependencies]
 anyhow = "1.0"

@@ -2,6 +2,8 @@ use wgpu::Buffer;
 #[cfg(target_arch = "wasm32")]
 use winit::event_loop::EventLoopProxy;
 
+use crate::material::Material;
+
 use {crate::texture, std::sync::Arc, winit::window::Window};
 
 pub struct State {
@@ -54,6 +56,7 @@ pub struct Camera {
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct CameraUniform {
     pub view_proj: [[f32; 4]; 4],
+    pub view_position: [f32; 4],
 }
 
 pub struct CameraController {
@@ -64,27 +67,12 @@ pub struct CameraController {
     pub if_right_pressed: bool,
 }
 
-#[repr(C)]
-#[derive(Debug, Clone, Copy, bytemuck::Zeroable, bytemuck::Pod)]
-pub struct ModelVertex {
-    pub position: [f32; 3],
-    pub text_cords: [f32; 2],
-    pub normal: [f32; 3],
-    pub color: [f32; 3],
-}
-
 pub struct Mesh {
     pub name: String,
     pub vertex_buffer: wgpu::Buffer,
     pub index_buffer: wgpu::Buffer,
     pub material: usize,
     pub indices: u32,
-}
-
-pub struct Material {
-    pub name: String,
-    pub diffuse_texture: texture::Texture,
-    pub bind_group: wgpu::BindGroup,
 }
 
 pub struct Model {
