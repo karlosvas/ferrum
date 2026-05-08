@@ -2,7 +2,7 @@ use wgpu::Buffer;
 #[cfg(target_arch = "wasm32")]
 use winit::event_loop::EventLoopProxy;
 
-use crate::material::Material;
+use crate::{hdr, material::Material};
 
 use {crate::texture, std::sync::Arc, winit::window::Window};
 
@@ -22,10 +22,20 @@ pub struct State {
     pub obj_light: crate::structs::Model,
     pub last_render_time: web_time::Instant,
     pub depth_texture: texture::Texture,
+
+    // Light
     pub light_uniform: LightUniform,
     pub light_buffer: Buffer,
     pub light_bind_group: wgpu::BindGroup,
     pub light_render_pipeline: wgpu::RenderPipeline,
+
+    // HDR
+    pub hdr: hdr::HdrPipeline,
+    pub environment_bind_group: wgpu::BindGroup,
+    pub sky_pipeline: wgpu::RenderPipeline,
+    pub environment_bind_group: wgpu::BindGroup,
+    pub sky_pipeline: wgpu::RenderPipeline,
+
     pub window: Arc<Window>,
 }
 
@@ -40,23 +50,6 @@ pub struct App {
 pub struct Vertex {
     pub position: [f32; 3],
     pub text_cords: [f32; 2],
-}
-
-pub struct Camera {
-    pub eye: cgmath::Point3<f32>,
-    pub target: cgmath::Point3<f32>,
-    pub up: cgmath::Vector3<f32>,
-    pub aspect: f32,
-    pub fovy: f32,
-    pub znear: f32,
-    pub zfar: f32,
-}
-
-#[repr(C)]
-#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct CameraUniform {
-    pub view_proj: [[f32; 4]; 4],
-    pub view_position: [f32; 4],
 }
 
 pub struct CameraController {
