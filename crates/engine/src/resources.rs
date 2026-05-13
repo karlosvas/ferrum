@@ -3,18 +3,10 @@ use std::{
     path::PathBuf,
 };
 
-use crate::{
-    material,
-    models::ModelVertex,
-    structs::{self, Model},
-    texture::{self, CubeTexture, Texture},
-};
+use crate::{material, models, structs, texture};
 use anyhow::Ok;
 use cgmath::{Vector2, Vector3};
-use wgpu::{
-    BindGroup, Buffer, CommandEncoder, ComputePass, ComputePipeline, PipelineLayout, ShaderModule,
-    TextureFormat, TextureView, util::DeviceExt,
-};
+use wgpu::{BindGroup, Buffer, util::DeviceExt};
 
 #[cfg(target_arch = "wasm32")]
 fn format_url(file_name: &str) -> reqwest::Url {
@@ -142,8 +134,9 @@ pub async fn load_model(
                 .to_string()
         };
 
-        let diffuse_texture: Texture = load_texture(&full_mtl_path, device, queue).await?;
-        let normal_texture: Texture = load_texture(&full_normal_path, device, queue).await?;
+        let diffuse_texture: texture::Texture = load_texture(&full_mtl_path, device, queue).await?;
+        let normal_texture: texture::Texture =
+            load_texture(&full_normal_path, device, queue).await?;
 
         let bind_group: BindGroup = device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout,
@@ -179,12 +172,12 @@ pub async fn load_model(
     let meshes: Vec<structs::Mesh> = models
         .into_iter()
         .map(|m| {
-            let has_colors = !m.mesh.vertex_color.is_empty();
-            let has_normals = !m.mesh.normals.is_empty();
-            let has_texcoords = !m.mesh.texcoords.is_empty();
-            let has_normal_indices = !m.mesh.normal_indices.is_empty();
+            let has_colors: bool = !m.mesh.vertex_color.is_empty();
+            let has_normals: bool = !m.mesh.normals.is_empty();
+            let has_texcoords: bool = !m.mesh.texcoords.is_empty();
+            let has_normal_indices: bool = !m.mesh.normal_indices.is_empty();
 
-            let mut vertices = (0..m.mesh.positions.len() / 3)
+            let mut vertices: Vec<models::ModelVertex> = (0..m.mesh.positions.len() / 3)
                 .map(|i| {
                     let pi = i * 3;
 
@@ -225,11 +218,11 @@ pub async fn load_model(
                         [1.0, 1.0, 1.0]
                     };
 
-                    let tangent = [0.0, 0.0, 0.0];
+                    let tangent: [f32; 3] = [0.0, 0.0, 0.0];
 
-                    let bitangent = [0.0, 0.0, 0.0];
+                    let bitangent: [f32; 3] = [0.0, 0.0, 0.0];
 
-                    ModelVertex {
+                    models::ModelVertex {
                         position,
                         text_cords,
                         normal,
@@ -248,9 +241,9 @@ pub async fn load_model(
             let mut trangles_included = vec![0; vertices.len()];
 
             for c in indices.chunks(3) {
-                let v0: ModelVertex = vertices[c[0] as usize];
-                let v1: ModelVertex = vertices[c[1] as usize];
-                let v2: ModelVertex = vertices[c[2] as usize];
+                let v0: models::ModelVertex = vertices[c[0] as usize];
+                let v1: models::ModelVertex = vertices[c[1] as usize];
+                let v2: models::ModelVertex = vertices[c[2] as usize];
 
                 let pos0: Vector3<f32> = v0.position.into();
                 let pos1: Vector3<f32> = v1.position.into();
@@ -305,7 +298,7 @@ pub async fn load_model(
             // Average the tangents/bitangents
             for (i, n) in trangles_included.into_iter().enumerate() {
                 let denom: f32 = 1.0 / n as f32;
-                let v: &mut ModelVertex = &mut vertices[i];
+                let v: &mut models::ModelVertex = &mut vertices[i];
                 v.tangent = (Vector3::from(v.tangent) * denom).into();
                 v.bitangent = (Vector3::from(v.bitangent) * denom).into();
             }
@@ -339,177 +332,5 @@ pub async fn load_model(
     for mesh in &meshes {
         log::debug!("Mesh: {} material_id: {}", mesh.name, mesh.material);
     }
-    Ok(Model { meshes, materials })
-}
-
-pub struct HdrLoader {
-    texture_format: wgpu::TextureFormat,
-    equirect_layout: wgpu::BindGroupLayout,
-    equirect_to_cubemap: wgpu::ComputePipeline,
-}
-
-impl HdrLoader {
-    pub fn new(device: &wgpu::Device) -> Self {
-        let module: ShaderModule =
-            device.create_shader_module(wgpu::include_wgsl!("shaders/equirectangular.wgsl"));
-        let texture_format: TextureFormat = wgpu::TextureFormat::Rgba32Float;
-        let equirect_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("HdrLoader::equirect_layout"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::COMPUTE,
-                    ty: wgpu::BindingType::StorageTexture {
-                        access: wgpu::StorageTextureAccess::WriteOnly,
-                        format: texture_format,
-                        view_dimension: wgpu::TextureViewDimension::D2Array,
-                    },
-                    count: None,
-                },
-            ],
-        });
-
-        let pipeline_layout: PipelineLayout =
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("Cubemap pipeline_layout"),
-                bind_group_layouts: &[&equirect_layout],
-                immediate_size: 0,
-            });
-
-        let equirect_to_cubemap: ComputePipeline =
-            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: Some("equirect_to_cubemap"),
-                layout: Some(&pipeline_layout),
-                module: &module,
-                entry_point: Some("cmompute_equirect_to_cubemap"),
-                compilation_options: Default::default(),
-                cache: None,
-            });
-
-        Self {
-            equirect_to_cubemap,
-            texture_format,
-            equirect_layout,
-        }
-    }
-
-    pub fn from_equirectangular_bytes(
-        &self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        data: &[u8],
-        dst_size: u32,
-        label: Option<&str>,
-    ) -> anyhow::Result<texture::CubeTexture> {
-        let hdr_decoder = HdrDecoder::new(Cursor::new(data))?;
-        let meta = hdr_decoder.metadata();
-
-        #[cfg(not(target_arch = "wasm32"))]
-        let pixels: Vec<[f64; 4]> = {
-            let mut pixels: Vec<[f64; 4]> =
-                vec![[0.0, 0.0, 0.0, 0.0]; meta.width as usize * meta.height as usize];
-            hdr_decoder.read_image_transform(
-                |pix| {
-                    let rgb = pix.to_hdr();
-                    [rgb.0[0], rgb.0[1], rgb.0[2], 1.0f32]
-                },
-                &mut pixels[..],
-            )?;
-            pixels
-        };
-        #[cfg(target_arch = "wasm32")]
-        let pixels = hdr_decoder
-            .read_image_native()?
-            .into_iter()
-            .map(|pix| {
-                let rgb = pix.to_hdr();
-                [rgb.0[0], rgb.0[1], rgb.0[2], 1.0f32]
-            })
-            .collect::<Vec<_>>();
-
-        let src = texture::Texture::create_2d_texture(
-            device,
-            meta.width,
-            meta.height,
-            self.texture_format,
-            wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            wgpu::FilterMode::Linear,
-            None,
-        );
-
-        queue.write_texture(
-            wgpu::TexelCopyTextureInfo {
-                texture: &src.texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            &bytemuck::cast_slice(&pixels),
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(src.size.width * std::mem::size_of::<[f32; 4]>() as u32),
-                rows_per_image: Some(src.size.height),
-            },
-            src.size,
-        );
-
-        let dst: CubeTexture = texture::CubeTexture::create_2d(
-            device,
-            dst_size,
-            dst_size,
-            self.texture_format,
-            1,
-            wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::TEXTURE_BINDING,
-            wgpu::FilterMode::Nearest,
-            label,
-        );
-
-        let dst_view: TextureView = dst.texture().create_view(&wgpu::TextureViewDescriptor {
-            label,
-            dimension: Some(wgpu::TextureViewDimension::D2Array),
-            ..Default::default()
-        });
-
-        let bind_group: BindGroup = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label,
-            layout: &self.equirect_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&src.view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::TextureView(&dst_view),
-                },
-            ],
-        });
-
-        let mut encoder: CommandEncoder = device.create_command_encoder(&Default::default());
-        let mut pass: ComputePass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-            label,
-            timestamp_writes,
-        });
-
-        let num_workgroups: u32 = (dst_size + 15) / 16;
-        pass.set_pipeline(&self.equirect_to_cubemap);
-        pass.set_bind_group(0, &bind_group, &[]);
-        pass.dispatch_workgroups(num_workgroups, num_workgroups, 6);
-
-        drop(pass);
-
-        queue.submit([encoder.finish()]);
-
-        Ok(dst)
-    }
+    Ok(structs::Model { meshes, materials })
 }

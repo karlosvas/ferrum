@@ -13,6 +13,56 @@ pub struct Texture {
 impl Texture {
     pub const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
+    pub fn create_2d_texture(
+        device: &wgpu::Device,
+        width: u32,
+        height: u32,
+        format: wgpu::TextureFormat,
+        usage: wgpu::TextureUsages,
+        filter: wgpu::FilterMode,
+        label: Option<&str>,
+    ) -> Self {
+        let size: Extent3d = wgpu::Extent3d {
+            width: width.max(1),
+            height: height.max(1),
+            depth_or_array_layers: 1,
+        };
+
+        let label_texture: Option<String> = label.map(|l| format!("Texture::{}", l));
+        let texture: wgpu::Texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: label_texture.as_deref(),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            usage,
+            view_formats: &[],
+        });
+
+        let view: wgpu::TextureView = texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        let label_sampler: Option<String> = label.map(|l| format!("Sampler::{}", l));
+        let sampler: Sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: label_sampler.as_deref(),
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: filter,
+            min_filter: filter,
+            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
+            lod_min_clamp: 0.0,
+            lod_max_clamp: 100.0,
+            ..Default::default()
+        });
+
+        Self {
+            texture,
+            view,
+            sampler,
+        }
+    }
+
     pub fn from_bytes(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -131,20 +181,6 @@ impl Texture {
     }
 }
 
-#[repr(C)]
-#[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
-pub enum CompareFunction {
-    Undefined = 0,
-    Never = 1,
-    Less = 2,
-    Equal = 3,
-    LessEqual = 4,
-    Greter = 5,
-    NotEqual = 6,
-    GreterEqual = 7,
-    Always = 8,
-}
-
 pub struct CubeTexture {
     texture: wgpu::Texture,
     sampler: wgpu::Sampler,
@@ -162,7 +198,7 @@ impl CubeTexture {
         mag_filter: wgpu::FilterMode,
         label: Option<&str>,
     ) -> Self {
-        let texture: wgpu::Texture = device.create_texture(&wgpu::wgt::TextureDescriptor {
+        let texture: wgpu::Texture = device.create_texture(&wgpu::TextureDescriptor {
             label,
             size: wgpu::Extent3d {
                 width,
@@ -177,9 +213,9 @@ impl CubeTexture {
             view_formats: &[],
         });
 
-        let view: TextureView = texture.create_view(&wgpu::wgt::TextureViewDescriptor {
+        let view: TextureView = texture.create_view(&wgpu::TextureViewDescriptor {
             label,
-            dimension: Some(wgpu::TextureViewDimension),
+            dimension: Some(wgpu::TextureViewDimension::Cube),
             array_layer_count: Some(6),
             ..Default::default()
         });

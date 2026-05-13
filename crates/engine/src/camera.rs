@@ -1,4 +1,4 @@
-use crate::structs::{Camera, CameraController, CameraUniform};
+use crate::structs::CameraController;
 use {
     cgmath::{Matrix4, Vector3},
     wgpu::{BindGroup, BindGroupLayout, Buffer, Device},
@@ -24,14 +24,6 @@ pub struct Camera {
 }
 
 impl Camera {
-    fn build_view_projection_matrix(&self) -> cgmath::Matrix4<f32> {
-        let view: Matrix4<f32> = cgmath::Matrix4::look_at_rh(self.eye, self.target, self.up);
-        let proj: Matrix4<f32> =
-            cgmath::perspective(cgmath::Deg(self.fovy), self.aspect, self.znear, self.zfar);
-
-        return OPENGL_TO_WGPU_MATRIX * proj * view;
-    }
-
     pub fn build_camera_setup(
         camera: &Camera,
         device: &Device,
@@ -56,7 +48,7 @@ impl Camera {
             }],
         });
 
-        // Controlador de  la cámara
+        // Camera controller
         let camera_controller: CameraController = CameraController::new(4.0);
 
         (bind_group, buffer, camera_controller, uniform)
@@ -66,22 +58,41 @@ impl Camera {
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct CameraUniform {
-    pub view_proj: [[f32; 4]; 4],
     pub view_position: [f32; 4],
+    pub view: [[f32; 4]; 4],
+    pub view_proj: [[f32; 4]; 4],
+    pub inv_proj: [[f32; 4]; 4],
+    pub inv_view: [[f32; 4]; 4],
 }
 
 impl CameraUniform {
     pub fn new() -> Self {
         use cgmath::SquareMatrix;
         Self {
-            view_proj: cgmath::Matrix4::identity().into(),
             view_position: [0.0, 0.0, 0.0, 1.0],
+            view: cgmath::Matrix4::identity().into(),
+            view_proj: cgmath::Matrix4::identity().into(),
+            inv_proj: cgmath::Matrix4::identity().into(),
+            inv_view: cgmath::Matrix4::identity().into(),
         }
     }
 
     pub fn update_view_proj(&mut self, camera: &Camera) {
-        self.view_proj = camera.build_view_projection_matrix().into();
+        use cgmath::SquareMatrix;
+        let view: Matrix4<f32> = cgmath::Matrix4::look_at_rh(camera.eye, camera.target, camera.up);
+        let proj: Matrix4<f32> = cgmath::perspective(
+            cgmath::Deg(camera.fovy),
+            camera.aspect,
+            camera.znear,
+            camera.zfar,
+        );
+        let proj_corrected: Matrix4<f32> = OPENGL_TO_WGPU_MATRIX * proj;
+
         self.view_position = [camera.eye.x, camera.eye.y, camera.eye.z, 1.0];
+        self.view = view.into();
+        self.view_proj = (proj_corrected * view).into();
+        self.inv_proj = proj_corrected.invert().unwrap().into();
+        self.inv_view = view.invert().unwrap().into();
     }
 }
 

@@ -35,6 +35,12 @@ fn vs_main(
     return out;
 }
 
+// Sky exposure: 1.0 = day (original HDR color).
+// Lower it to darken: ~0.3 dusk, ~0.05 night, 0.0 fully black.
+const SKY_EXPOSURE: f32 = 0.01;
+// Night tint (dark blue). Only blends in when SKY_EXPOSURE is low.
+const NIGHT_TINT: vec3<f32> = vec3<f32>(0.05, 0.08, 0.20);
+
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let view_pos_homogeneous = camera.inv_proj * in.clip_position;
@@ -42,5 +48,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var ray_direction = normalize((camera.inv_view * vec4(view_ray_direction, 0.0)).xyz);
 
     let sample = textureSample(env_map, env_sampler, ray_direction);
-    return sample;
+
+    // Night/day blend: lower exposure gives more weight to the dark blue tint.
+    let night_blend = clamp(1.0 - SKY_EXPOSURE, 0.0, 1.0);
+    let rgb = sample.rgb * SKY_EXPOSURE + NIGHT_TINT * night_blend;
+    return vec4<f32>(rgb, sample.a);
 }

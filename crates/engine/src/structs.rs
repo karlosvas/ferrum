@@ -2,7 +2,11 @@ use wgpu::Buffer;
 #[cfg(target_arch = "wasm32")]
 use winit::event_loop::EventLoopProxy;
 
-use crate::{hdr, material::Material};
+use crate::{
+    camera::{Camera, CameraUniform},
+    hdr,
+    material::Material,
+};
 
 use {crate::texture, std::sync::Arc, winit::window::Window};
 
@@ -31,8 +35,6 @@ pub struct State {
 
     // HDR
     pub hdr: hdr::HdrPipeline,
-    pub environment_bind_group: wgpu::BindGroup,
-    pub sky_pipeline: wgpu::RenderPipeline,
     pub environment_bind_group: wgpu::BindGroup,
     pub sky_pipeline: wgpu::RenderPipeline,
 
