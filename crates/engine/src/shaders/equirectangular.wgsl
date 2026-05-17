@@ -12,7 +12,7 @@ var src: texture_2d<f32>;
 
 @group(0)
 @binding(1)
-var dst: texture_storage_2d_array<rgba32float, write>;
+var dst: texture_storage_2d_array<rgba16float, write>;
 
 @compute
 @workgroup_size(16, 16, 1)
@@ -77,10 +77,38 @@ fn compute_equirect_to_cubemap(
     // Get coordinate on the equirectangular texture
     let inv_atan = vec2(0.1591, 0.3183);
     let eq_uv = vec2(atan2(spherical.z, spherical.x), asin(spherical.y)) * inv_atan + 0.5;
-    let eq_pixel = vec2<i32>(eq_uv * vec2<f32>(textureDimensions(src)));
 
-    // We use textureLoad() as textureSample() is not allowed in compute shaders
-    var sample = textureLoad(src, eq_pixel, 0);
+    let src_dim = vec2<f32>(textureDimensions(src));
+    let c_before = eq_uv * src_dim;
+    let c = c_before - vec2<f32>(0.5);
+
+    let i0 = vec2<i32>(floor(c));
+    let f  = fract(c);
+
+    // i0, i0+1..
+    let max_coord = vec2<i32>(src_dim) - vec2<i32>(1);
+
+    // Filtro de caja: 4 muestras bilineares desplazadas 1 píxel cada una,
+    // promediadas. Cubre una ventana efectiva de 3x3 píxeles del source y
+    // mata el aliasing residual del downsample fuerte.
+    var acc = vec4<f32>(0.0);
+    for (var dy: i32 = 0; dy < 2; dy++) {
+        for (var dx: i32 = 0; dx < 2; dx++) {
+            let c_shift = c + vec2<f32>(f32(dx), f32(dy));
+            let i0_s = vec2<i32>(floor(c_shift));
+            let f_s  = fract(c_shift);
+
+            let s00 = textureLoad(src, clamp(i0_s + vec2<i32>(0, 0), vec2<i32>(0), max_coord), 0);
+            let s10 = textureLoad(src, clamp(i0_s + vec2<i32>(1, 0), vec2<i32>(0), max_coord), 0);
+            let s01 = textureLoad(src, clamp(i0_s + vec2<i32>(0, 1), vec2<i32>(0), max_coord), 0);
+            let s11 = textureLoad(src, clamp(i0_s + vec2<i32>(1, 1), vec2<i32>(0), max_coord), 0);
+
+            let sx0 = mix(s00, s10, f_s.x);
+            let sx1 = mix(s01, s11, f_s.x);
+            acc += mix(sx0, sx1, f_s.y);
+        }
+    }
+    let sample = acc * 0.25;
 
     textureStore(dst, gid.xy, gid.z, sample);
 }

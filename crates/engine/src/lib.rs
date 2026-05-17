@@ -8,6 +8,7 @@ mod resources;
 mod structs;
 mod texture;
 
+use cgmath::{Deg, Quaternion, Vector3};
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 use wgpu::TextureView;
@@ -16,15 +17,13 @@ use winit::event_loop::EventLoopProxy;
 
 use crate::{
     hdr::HdrPipeline,
-    models::{ModelVertex, Vertex},
-    structs::LightUniform,
+    models::{InstanceRaw, ModelVertex, Vertex},
     texture::CubeTexture,
 };
 use {
     cgmath::Rotation3,
     image::ImageBuffer,
     std::sync::Arc,
-    structs::{App, State},
     wgpu::{
         Adapter, BindGroup, BindGroupLayout, Buffer, CommandEncoder, Device, Instance,
         PipelineLayout, Queue, RenderPass, RenderPipeline, ShaderModule, ShaderModuleDescriptor,
@@ -42,6 +41,38 @@ use {
         window::{WindowAttributes, WindowId},
     },
 };
+
+pub struct State {
+    pub window_surface: wgpu::Surface<'static>,
+    pub device: wgpu::Device,
+    pub queue: wgpu::Queue,
+    pub config: wgpu::SurfaceConfiguration,
+    pub is_surface_configuration: bool,
+    pub render_pipeline: wgpu::RenderPipeline,
+    pub camera: camera::Camera,
+    pub camera_uniform: camera::CameraUniform,
+    pub camera_buffer: wgpu::Buffer,
+    pub camera_bind_group: wgpu::BindGroup,
+    pub camera_controller: camera::CameraController,
+    pub obj_model: models::Model,
+    pub obj_model_2: models::Model,
+    pub obj_light: models::Model,
+    pub last_render_time: web_time::Instant,
+    pub depth_texture: texture::Texture,
+
+    // Light
+    pub light_uniform: light::LightUniform,
+    pub light_buffer: Buffer,
+    pub light_bind_group: wgpu::BindGroup,
+    pub light_render_pipeline: wgpu::RenderPipeline,
+
+    // HDR
+    pub hdr: hdr::HdrPipeline,
+    pub environment_bind_group: wgpu::BindGroup,
+    pub sky_pipeline: wgpu::RenderPipeline,
+
+    pub window: Arc<Window>,
+}
 
 impl State {
     pub async fn new(window: Arc<Window>) -> anyhow::Result<Self> {
@@ -155,6 +186,7 @@ impl State {
         let shader: ShaderModule =
             device.create_shader_module(wgpu::include_wgsl!("shaders/shaders.wgsl"));
 
+        // Camera
         let camera: camera::Camera = camera::Camera {
             eye: (0.0, 4.0, 10.0).into(),
             target: (0.0, 3.0, 0.0).into(),
@@ -184,19 +216,39 @@ impl State {
             camera::Camera::build_camera_setup(&camera, &device, &camera_bind_group_layout);
 
         // Load the 3D model (.obj inside the /res folder)
-        let obj_model: structs::Model = resources::load_model(
+        let obj_model: models::Model = resources::load_model(
             "plant/plant.obj",
             &device,
             &queue,
             &texture_bind_group_layout,
+            vec![models::Instance::new(
+                Vector3::new(0.0, 1.5, 0.0),
+                Quaternion::from_angle_y(Deg(0.0)),
+                Vector3::new(1.0, 1.0, 1.0),
+            )],
         )
         .await
         .expect("Error cargando plant/plant.obj");
 
-        let obj_light: structs::Model =
-            resources::load_model("sun/venus.obj", &device, &queue, &texture_bind_group_layout)
-                .await
-                .unwrap();
+        let obj_model_2: models::Model = resources::load_model(
+            "floor/floor.obj",
+            &device,
+            &queue,
+            &texture_bind_group_layout,
+            vec![models::Instance::default()],
+        )
+        .await
+        .expect("Error cargando plant/plant.obj");
+
+        let obj_light: models::Model = resources::load_model(
+            "sun/venus.obj",
+            &device,
+            &queue,
+            &texture_bind_group_layout,
+            vec![models::Instance::default()],
+        )
+        .await
+        .unwrap();
 
         let depth_texture: texture::Texture =
             texture::Texture::create_depth_texture(&device, &config, "depth_texture");
@@ -205,14 +257,21 @@ impl State {
         let hdr: HdrPipeline = hdr::HdrPipeline::new(&device, &config);
 
         let hdr_loader: hdr::HdrLoader = hdr::HdrLoader::new(&device);
-        let sky_bytes: Vec<u8> =
-            resources::load_binary("citrus_orchard_road_puresky_16k.hdr").await?;
+        let sky_file: &str = "NightSkyHDRI014_16K_HDR.exr";
+        let sky_format: hdr::SkyFormat = if sky_file.ends_with(".exr") {
+            hdr::SkyFormat::Exr
+        } else {
+            hdr::SkyFormat::Hdr
+        };
+        let sky_bytes: Vec<u8> = resources::load_binary(sky_file).await?;
+
         let sky_texture: CubeTexture = hdr_loader.from_equirectangular_bytes(
             &device,
             &queue,
             &sky_bytes,
-            1080,
-            Some("Sky Texture"),
+            sky_format,
+            None,
+            Some("sky_texture"),
         )?;
 
         let environment_layout: BindGroupLayout =
@@ -223,7 +282,7 @@ impl State {
                         binding: 0,
                         visibility: wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
                             view_dimension: wgpu::TextureViewDimension::Cube,
                             multisampled: false,
                         },
@@ -232,7 +291,7 @@ impl State {
                     wgpu::BindGroupLayoutEntry {
                         binding: 1,
                         visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                         count: None,
                     },
                 ],
@@ -274,10 +333,10 @@ impl State {
         };
 
         // Light section
-        let light_uniform: LightUniform = structs::LightUniform {
-            position: [2.0, 2.0, 2.0],
+        let light_uniform: light::LightUniform = light::LightUniform {
+            position: [10.0, 0.0, 0.0],
             _padding: 0,
-            color: [1.0, 0.8, 0.6],
+            color: [10.0, 8.0, 6.0],
             _padding2: 0,
         };
         let light_buffer: Buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -337,7 +396,7 @@ impl State {
                 source: wgpu::ShaderSource::Wgsl(include_str!("shaders/light.wgsl").into()),
             };
 
-            LightUniform::create_render_pipeline(
+            light::LightUniform::create_render_pipeline(
                 &device,
                 &light_pipeline_layout,
                 hdr.format(),
@@ -347,6 +406,7 @@ impl State {
             )
         };
 
+        // Render Pipeline
         let render_pipeline: RenderPipeline =
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some("render_pipeline"),
@@ -355,7 +415,7 @@ impl State {
                     module: &shader,
                     entry_point: Some("vs_main"),
                     compilation_options: wgpu::PipelineCompilationOptions::default(),
-                    buffers: &[ModelVertex::desc()],
+                    buffers: &[ModelVertex::desc(), InstanceRaw::desc()],
                 },
                 primitive: wgpu::PrimitiveState {
                     topology: wgpu::PrimitiveTopology::TriangleList,
@@ -406,6 +466,7 @@ impl State {
             camera_bind_group,
             camera_controller,
             obj_model,
+            obj_model_2,
             obj_light,
             last_render_time: web_time::Instant::now(),
             depth_texture,
@@ -492,6 +553,11 @@ impl State {
                 &self.camera_bind_group,
                 &self.light_bind_group,
             );
+            render_pass.draw_model(
+                &self.obj_model_2,
+                &self.camera_bind_group,
+                &self.light_bind_group,
+            );
 
             // Sky pipeline last: leverages the depth test (LessEqual with z=1.0)
             // to paint only the pixels where no geometry was drawn.
@@ -539,8 +605,8 @@ impl State {
         // Light rotation animation
         let old_position: cgmath::Vector3<f32> = self.light_uniform.position.into();
         self.light_uniform.position = (cgmath::Quaternion::from_axis_angle(
-            (0.0, 1.0, 0.0).into(),
-            cgmath::Deg(60.0 * dt.as_secs_f32()),
+            (0.0, 0.0, 1.0).into(),
+            cgmath::Deg(30.0 * dt.as_secs_f32()),
         ) * old_position)
             .into();
 
@@ -550,6 +616,12 @@ impl State {
             bytemuck::cast_slice(&[self.light_uniform]),
         );
     }
+}
+
+pub struct App {
+    pub state: Option<State>,
+    #[cfg(target_arch = "wasm32")]
+    pub proxy: Option<EventLoopProxy<State>>,
 }
 
 impl App {

@@ -1,6 +1,13 @@
 use wgpu::{RenderPipeline, ShaderModule};
 
-use crate::structs::LightUniform;
+#[repr(C)]
+#[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct LightUniform {
+    pub position: [f32; 3],
+    pub _padding: u32,
+    pub color: [f32; 3],
+    pub _padding2: u32,
+}
 
 impl LightUniform {
     fn new(position: [f32; 3], color: [f32; 3], _padding: u32, _padding2: u32) -> Self {

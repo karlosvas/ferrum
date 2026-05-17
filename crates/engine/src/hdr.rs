@@ -1,11 +1,21 @@
-use image::codecs::hdr::{HdrDecoder, HdrMetadata};
+use image::codecs::hdr::HdrDecoder;
+use image::codecs::openexr::OpenExrDecoder;
+use image::{DynamicImage, ImageDecoder};
 use wgpu::{
     BindGroup, BindGroupLayout, CommandEncoder, ComputePass, ComputePipeline, Operations,
     PipelineLayout, RenderPass, RenderPipeline, ShaderModule, ShaderModuleDescriptor,
     TextureFormat,
 };
 
+use crate::texture::Texture;
 use crate::{pipeline, texture};
+
+/// Equirectangular sky file format.
+#[derive(Debug, Clone, Copy)]
+pub enum SkyFormat {
+    Hdr,
+    Exr,
+}
 
 pub struct HdrPipeline {
     pipeline: wgpu::RenderPipeline,
@@ -164,7 +174,8 @@ impl HdrPipeline {
 }
 
 pub struct HdrLoader {
-    texture_format: wgpu::TextureFormat,
+    source_format: wgpu::TextureFormat,
+    cube_format: wgpu::TextureFormat,
     equirect_layout: wgpu::BindGroupLayout,
     equirect_to_cubemap: wgpu::ComputePipeline,
 }
@@ -173,7 +184,10 @@ impl HdrLoader {
     pub fn new(device: &wgpu::Device) -> Self {
         let module: ShaderModule =
             device.create_shader_module(wgpu::include_wgsl!("shaders/equirectangular.wgsl"));
-        let texture_format: TextureFormat = wgpu::TextureFormat::Rgba32Float;
+        // Source equirectangular: 32-bit float because that's what .hdr / .exr give us.
+        // Cubemap destination: 16-bit float, filterable on every device without features.
+        let source_format: TextureFormat = wgpu::TextureFormat::Rgba32Float;
+        let cube_format: TextureFormat = wgpu::TextureFormat::Rgba16Float;
         let equirect_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("HdrLoader::equirect_layout"),
             entries: &[
@@ -192,7 +206,7 @@ impl HdrLoader {
                     visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::StorageTexture {
                         access: wgpu::StorageTextureAccess::WriteOnly,
-                        format: texture_format,
+                        format: cube_format,
                         view_dimension: wgpu::TextureViewDimension::D2Array,
                     },
                     count: None,
@@ -219,7 +233,8 @@ impl HdrLoader {
 
         Self {
             equirect_to_cubemap,
-            texture_format,
+            source_format,
+            cube_format,
             equirect_layout,
         }
     }
@@ -229,42 +244,22 @@ impl HdrLoader {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         data: &[u8],
-        dst_size: u32,
+        format: SkyFormat,
+        dst_size: Option<u32>,
         label: Option<&str>,
     ) -> anyhow::Result<texture::CubeTexture> {
-        let hdr_decoder: HdrDecoder<std::io::Cursor<&[u8]>> =
-            HdrDecoder::new(std::io::Cursor::new(data))?;
-        let meta: HdrMetadata = hdr_decoder.metadata();
-
-        #[cfg(not(target_arch = "wasm32"))]
-        let pixels: Vec<[f32; 4]> = {
-            let mut pixels: Vec<[f32; 4]> =
-                vec![[0.0, 0.0, 0.0, 0.0]; meta.width as usize * meta.height as usize];
-
-            hdr_decoder.read_image_transform(
-                |pix| {
-                    let rgb = pix.to_hdr();
-                    [rgb.0[0], rgb.0[1], rgb.0[2], 1.0f32]
-                },
-                &mut pixels[..],
-            )?;
-            pixels
+        let (pixels, width, height): (Vec<[f32; 4]>, u32, u32) = match format {
+            SkyFormat::Hdr => Self::decode_radiance_hdr(data)?,
+            SkyFormat::Exr => Self::decode_openexr(data)?,
         };
-        #[cfg(target_arch = "wasm32")]
-        let pixels = hdr_decoder
-            .read_image_native()?
-            .into_iter()
-            .map(|pix| {
-                let rgb = pix.to_hdr();
-                [rgb.0[0], rgb.0[1], rgb.0[2], 1.0f32]
-            })
-            .collect::<Vec<_>>();
 
-        let src = texture::Texture::create_2d_texture(
+        let dst_size: u32 = dst_size.unwrap_or_else(|| Self::cube_face_size_for_source(width));
+
+        let src: Texture = texture::Texture::create_2d_texture(
             device,
-            meta.width,
-            meta.height,
-            self.texture_format,
+            width,
+            height,
+            self.source_format,
             wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
             wgpu::FilterMode::Linear,
             None,
@@ -292,10 +287,10 @@ impl HdrLoader {
             device,
             dst_size,
             dst_size,
-            self.texture_format,
+            self.cube_format,
             1,
             wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::TEXTURE_BINDING,
-            wgpu::FilterMode::Nearest,
+            wgpu::FilterMode::Linear,
             label,
         );
 
@@ -336,5 +331,54 @@ impl HdrLoader {
         queue.submit([encoder.finish()]);
 
         Ok(dst)
+    }
+
+    fn decode_radiance_hdr(data: &[u8]) -> anyhow::Result<(Vec<[f32; 4]>, u32, u32)> {
+        let hdr_decoder: HdrDecoder<std::io::Cursor<&[u8]>> =
+            HdrDecoder::new(std::io::Cursor::new(data))?;
+        let meta = hdr_decoder.metadata();
+        let (width, height) = (meta.width, meta.height);
+
+        #[cfg(not(target_arch = "wasm32"))]
+        let pixels: Vec<[f32; 4]> = {
+            let mut pixels: Vec<[f32; 4]> = vec![[0.0; 4]; width as usize * height as usize];
+            hdr_decoder.read_image_transform(
+                |pix| {
+                    let rgb = pix.to_hdr();
+                    [rgb.0[0], rgb.0[1], rgb.0[2], 1.0f32]
+                },
+                &mut pixels[..],
+            )?;
+            pixels
+        };
+        #[cfg(target_arch = "wasm32")]
+        let pixels: Vec<[f32; 4]> = hdr_decoder
+            .read_image_native()?
+            .into_iter()
+            .map(|pix| {
+                let rgb = pix.to_hdr();
+                [rgb.0[0], rgb.0[1], rgb.0[2], 1.0f32]
+            })
+            .collect();
+
+        Ok((pixels, width, height))
+    }
+
+    fn decode_openexr(data: &[u8]) -> anyhow::Result<(Vec<[f32; 4]>, u32, u32)> {
+        let decoder = OpenExrDecoder::new(std::io::Cursor::new(data))?;
+        let (width, height) = decoder.dimensions();
+        let dynamic = DynamicImage::from_decoder(decoder)?;
+        let rgba = dynamic.into_rgba32f();
+        let pixels: Vec<[f32; 4]> = rgba
+            .as_raw()
+            .chunks_exact(4)
+            .map(|c| [c[0], c[1], c[2], c[3]])
+            .collect();
+        Ok((pixels, width, height))
+    }
+
+    fn cube_face_size_for_source(source_width: u32) -> u32 {
+        let target: u32 = source_width.max(64) / 6;
+        1u32 << (31 - target.leading_zeros())
     }
 }

@@ -1,4 +1,3 @@
-use crate::structs::CameraController;
 use {
     cgmath::{Matrix4, Vector3},
     wgpu::{BindGroup, BindGroupLayout, Buffer, Device},
@@ -94,6 +93,14 @@ impl CameraUniform {
         self.inv_proj = proj_corrected.invert().unwrap().into();
         self.inv_view = view.invert().unwrap().into();
     }
+}
+
+pub struct CameraController {
+    pub speed: f32,
+    pub is_forward_pressed: bool,
+    pub is_backward_pressed: bool,
+    pub if_left_pressed: bool,
+    pub if_right_pressed: bool,
 }
 
 impl CameraController {

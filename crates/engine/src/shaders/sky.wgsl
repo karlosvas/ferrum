@@ -37,7 +37,7 @@ fn vs_main(
 
 // Sky exposure: 1.0 = day (original HDR color).
 // Lower it to darken: ~0.3 dusk, ~0.05 night, 0.0 fully black.
-const SKY_EXPOSURE: f32 = 0.01;
+const SKY_EXPOSURE: f32 = 1.0;
 // Night tint (dark blue). Only blends in when SKY_EXPOSURE is low.
 const NIGHT_TINT: vec3<f32> = vec3<f32>(0.05, 0.08, 0.20);
 

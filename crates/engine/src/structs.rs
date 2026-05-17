@@ -1,51 +1,7 @@
-use wgpu::Buffer;
 #[cfg(target_arch = "wasm32")]
 use winit::event_loop::EventLoopProxy;
 
-use crate::{
-    camera::{Camera, CameraUniform},
-    hdr,
-    material::Material,
-};
-
-use {crate::texture, std::sync::Arc, winit::window::Window};
-
-pub struct State {
-    pub window_surface: wgpu::Surface<'static>,
-    pub device: wgpu::Device,
-    pub queue: wgpu::Queue,
-    pub config: wgpu::SurfaceConfiguration,
-    pub is_surface_configuration: bool,
-    pub render_pipeline: wgpu::RenderPipeline,
-    pub camera: Camera,
-    pub camera_uniform: CameraUniform,
-    pub camera_buffer: wgpu::Buffer,
-    pub camera_bind_group: wgpu::BindGroup,
-    pub camera_controller: CameraController,
-    pub obj_model: crate::structs::Model,
-    pub obj_light: crate::structs::Model,
-    pub last_render_time: web_time::Instant,
-    pub depth_texture: texture::Texture,
-
-    // Light
-    pub light_uniform: LightUniform,
-    pub light_buffer: Buffer,
-    pub light_bind_group: wgpu::BindGroup,
-    pub light_render_pipeline: wgpu::RenderPipeline,
-
-    // HDR
-    pub hdr: hdr::HdrPipeline,
-    pub environment_bind_group: wgpu::BindGroup,
-    pub sky_pipeline: wgpu::RenderPipeline,
-
-    pub window: Arc<Window>,
-}
-
-pub struct App {
-    pub state: Option<State>,
-    #[cfg(target_arch = "wasm32")]
-    pub proxy: Option<EventLoopProxy<State>>,
-}
+use crate::material::Material;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -54,40 +10,10 @@ pub struct Vertex {
     pub text_cords: [f32; 2],
 }
 
-pub struct CameraController {
-    pub speed: f32,
-    pub is_forward_pressed: bool,
-    pub is_backward_pressed: bool,
-    pub if_left_pressed: bool,
-    pub if_right_pressed: bool,
-}
-
 pub struct Mesh {
     pub name: String,
     pub vertex_buffer: wgpu::Buffer,
     pub index_buffer: wgpu::Buffer,
     pub material: usize,
     pub indices: u32,
-}
-
-pub struct Model {
-    pub meshes: Vec<Mesh>,
-    pub materials: Vec<Material>,
-}
-
-#[repr(C)]
-#[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct LightUniform {
-    pub position: [f32; 3],
-    pub _padding: u32,
-    pub color: [f32; 3],
-    pub _padding2: u32,
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-#[allow(dead_code)]
-pub struct InstanceRaw {
-    pub model: [[f32; 4]; 4],
-    pub normals: [[f32; 3]; 3],
 }

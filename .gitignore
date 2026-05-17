@@ -16,3 +16,4 @@ Thumbs.db
 .idea/
 .vercel
 public/pkg/
+.claude

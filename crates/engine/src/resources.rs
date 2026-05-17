@@ -1,10 +1,9 @@
 use std::{
     io::{BufReader, Cursor},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 use crate::{material, models, structs, texture};
-use anyhow::Ok;
 use cgmath::{Vector2, Vector3};
 use wgpu::{BindGroup, Buffer, util::DeviceExt};
 
@@ -14,8 +13,61 @@ fn format_url(file_name: &str) -> reqwest::Url {
     base.join(file_name).unwrap()
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+fn resolve_resource_path(file_name: &str) -> anyhow::Result<PathBuf> {
+    let mut candidate_names: Vec<String> = vec![file_name.to_string()];
+    if let Some(base_name) = file_name.strip_suffix(".jpg") {
+        candidate_names.push(format!("{base_name}.jpeg"));
+    } else if let Some(base_name) = file_name.strip_suffix(".jpeg") {
+        candidate_names.push(format!("{base_name}.jpg"));
+    }
+
+    let mut tried_paths: Vec<PathBuf> = Vec::new();
+
+    // Keep build.rs output as first choice.
+    for candidate_name in &candidate_names {
+        let out_dir_path: PathBuf = Path::new(env!("OUT_DIR")).join("res").join(candidate_name);
+        tried_paths.push(out_dir_path.clone());
+        if out_dir_path.is_file() {
+            return Ok(out_dir_path);
+        }
+    }
+
+    // Fallback for local runs from the workspace.
+    for candidate_name in &candidate_names {
+        let manifest_res_path: PathBuf = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("res")
+            .join(candidate_name);
+        tried_paths.push(manifest_res_path.clone());
+        if manifest_res_path.is_file() {
+            return Ok(manifest_res_path);
+        }
+    }
+
+    // Fallback for packaged/copy-near-exe runs.
+    if let std::result::Result::Ok(exe_path) = std::env::current_exe() {
+        if let std::option::Option::Some(exe_dir) = exe_path.parent() {
+            for candidate_name in &candidate_names {
+                let exe_res_path: PathBuf = exe_dir.join("res").join(candidate_name);
+                tried_paths.push(exe_res_path.clone());
+                if exe_res_path.is_file() {
+                    return Ok(exe_res_path);
+                }
+            }
+        }
+    }
+
+    let searched: String = tried_paths
+        .iter()
+        .map(|p| p.display().to_string())
+        .collect::<Vec<_>>()
+        .join(" | ");
+
+    anyhow::bail!("No se encontro el recurso '{file_name}'. Rutas probadas: {searched}")
+}
+
 pub async fn load_string(file_name: &str) -> anyhow::Result<String> {
-    log::debug!("Intentando abrir: {:?}", file_name);
+    log::debug!("Open: {:?}", file_name);
 
     #[cfg(target_arch = "wasm32")]
     let text = {
@@ -25,11 +77,9 @@ pub async fn load_string(file_name: &str) -> anyhow::Result<String> {
 
     #[cfg(not(target_arch = "wasm32"))]
     let text: String = {
-        let path: PathBuf = std::path::Path::new(env!("OUT_DIR"))
-            .join("res")
-            .join(file_name);
+        let path: PathBuf = resolve_resource_path(file_name)?;
 
-        log::debug!("Ruta absoluta resuelta: {:?}", path);
+        log::debug!("Ansolute path resolved: {:?}", path);
         std::fs::read_to_string(path)?
     };
 
@@ -45,9 +95,7 @@ pub async fn load_binary(file_name: &str) -> anyhow::Result<Vec<u8>> {
 
     #[cfg(not(target_arch = "wasm32"))]
     let data = {
-        let path: PathBuf = std::path::Path::new(env!("OUT_DIR"))
-            .join("res")
-            .join(file_name);
+        let path: PathBuf = resolve_resource_path(file_name)?;
 
         std::fs::read(path)?
     };
@@ -59,9 +107,10 @@ pub async fn load_texture(
     file_name: &str,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
+    is_normal_map: bool,
 ) -> anyhow::Result<texture::Texture> {
     let data: Vec<u8> = load_binary(file_name).await?;
-    texture::Texture::from_bytes(device, queue, &data, file_name)
+    texture::Texture::from_bytes(device, queue, &data, file_name, is_normal_map)
 }
 
 pub async fn load_model(
@@ -69,7 +118,8 @@ pub async fn load_model(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     layout: &wgpu::BindGroupLayout,
-) -> anyhow::Result<structs::Model> {
+    instances: Vec<models::Instance>,
+) -> anyhow::Result<models::Model> {
     let obj_text: String = load_string(file_name).await?;
     let obj_cursor: Cursor<String> = Cursor::new(obj_text);
     let mut obj_reder: BufReader<_> = BufReader::new(obj_cursor);
@@ -134,9 +184,10 @@ pub async fn load_model(
                 .to_string()
         };
 
-        let diffuse_texture: texture::Texture = load_texture(&full_mtl_path, device, queue).await?;
+        let diffuse_texture: texture::Texture =
+            load_texture(&full_mtl_path, device, queue, false).await?;
         let normal_texture: texture::Texture =
-            load_texture(&full_normal_path, device, queue).await?;
+            load_texture(&full_normal_path, device, queue, true).await?;
 
         let bind_group: BindGroup = device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout,
@@ -233,11 +284,7 @@ pub async fn load_model(
                 })
                 .collect::<Vec<_>>();
 
-            log::debug!("Num vertices: {}", vertices.len());
-            log::debug!("Num indices: {}", m.mesh.indices.len());
-            log::debug!("Max index: {}", m.mesh.indices.iter().max().unwrap());
-
-            let indices = &m.mesh.indices;
+            let indices: &Vec<u32> = &m.mesh.indices;
             let mut trangles_included = vec![0; vertices.len()];
 
             for c in indices.chunks(3) {
@@ -327,10 +374,19 @@ pub async fn load_model(
         })
         .collect::<Vec<_>>();
 
-    log::debug!("Num meshes: {}", meshes.len());
-    log::debug!("Num materials: {}", materials.len());
-    for mesh in &meshes {
-        log::debug!("Mesh: {} material_id: {}", mesh.name, mesh.material);
-    }
-    Ok(structs::Model { meshes, materials })
+    let instances_raws: Vec<models::InstanceRaw> = instances.iter().map(|i| i.to_raw()).collect();
+
+    let label: String = format!("{file_name}_instance_buffer");
+    let instance_buffer: Buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        label: Some(&label),
+        contents: bytemuck::cast_slice(&instances_raws),
+        usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+    });
+
+    Ok(models::Model {
+        meshes,
+        materials,
+        instances,
+        instance_buffer,
+    })
 }
