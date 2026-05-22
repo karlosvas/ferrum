@@ -8,7 +8,7 @@ mod resources;
 mod structs;
 mod texture;
 
-use cgmath::{Deg, Quaternion, Vector3};
+use cgmath::{Deg, Matrix4, Quaternion, Vector3, ortho};
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 use wgpu::TextureView;
@@ -609,6 +609,13 @@ impl State {
             cgmath::Deg(30.0 * dt.as_secs_f32()),
         ) * old_position)
             .into();
+
+        // TODO:: Continue with shadow mapping
+        let light_view: Matrix4<_> = Matrix4::look_at_rh(, center, up);
+        let light_proj: Matrix4<_> = ortho(left, right, bottom, top, near, far)
+
+        let light_view_proj: Matrix4<_> = light_proj * light_view;
+        self.light_uniform.light_view_proj = light_view_proj.to_raw();
 
         self.queue.write_buffer(
             &self.light_buffer,

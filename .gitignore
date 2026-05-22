@@ -17,3 +17,5 @@ Thumbs.db
 .vercel
 public/pkg/
 .claude
+*.hdr
+*.exr

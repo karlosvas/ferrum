@@ -4,17 +4,25 @@ use wgpu::{RenderPipeline, ShaderModule};
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct LightUniform {
     pub position: [f32; 3],
-    pub _padding: u32,
     pub color: [f32; 3],
+    pub light_view_proj: [f32; 3],
+    pub _padding: u32,
     pub _padding2: u32,
 }
 
 impl LightUniform {
-    fn new(position: [f32; 3], color: [f32; 3], _padding: u32, _padding2: u32) -> Self {
+    fn new(
+        position: [f32; 3],
+        color: [f32; 3],
+        light_view_proj: [f32; 3],
+        _padding: u32,
+        _padding2: u32,
+    ) -> Self {
         Self {
             position,
-            _padding,
             color,
+            light_view_proj,
+            _padding,
             _padding2,
         }
     }
