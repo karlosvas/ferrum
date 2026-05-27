@@ -5,8 +5,10 @@ interface Props {
 const { dataSection } = Astro.props;
 ---
 
-<section class="my-52" id="features">
-  <h2 class="text-primary-light mt-80 text-2xl font-bold">Características</h2>
+<section class="my-20 md:my-52" id="features">
+  <h2 class="text-primary-light mt-16 text-2xl font-bold md:mt-80">
+    Características
+  </h2>
   <div class="my-5 grid grid-cols-1 gap-6 md:grid-cols-2">
     {
       dataSection.map((item) => {

@@ -1,25 +1,31 @@
 <section class="relative" id="home">
-  <div class="z-10 flex space-x-10">
-    <div>
-      <h1 class="text-primary-light py-4 text-4xl font-bold">
+  <div class="z-10 flex flex-col gap-8 md:flex-row md:items-center md:gap-10">
+    <!-- Text column -->
+    <div class="flex flex-1 flex-col">
+      <h1
+        class="text-primary-light py-4 text-3xl font-bold sm:text-4xl lg:text-5xl xl:text-6xl"
+      >
         Anatomía en Tres Dimensiones
       </h1>
-      <p class="text-muted pt-5">
-        Del Órgano a la Célula Visualiza transiciones fluidas entre anatomía
+      <p class="text-muted pt-5 text-sm leading-relaxed sm:text-base lg:text-lg">
+        Del Órgano a la Célula — Visualiza transiciones fluidas entre anatomía
         macroscópica y estructuras microscópicas mediante modelos 3D
         interactivos y realidad virtual. Ferrum integra escalas anatómicas que
         tradicionalmente permanecen fragmentadas.
       </p>
+      <!-- Stats (inside text column so they don't overlap) -->
+      <div class="mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm font-bold sm:text-base">
+        <div class="border-r-1 border-gray-500 pr-4">100+ Modelos</div>
+        <div class="border-r-1 border-gray-500 pr-4">3D VR Nativo</div>
+        <div>3 Plataformas</div>
+      </div>
     </div>
+
+    <!-- Hero image -->
     <img
       src="img/rocks.webp"
-      alt=""
-      class="h-auto w-1/2 rounded-2xl object-cover"
+      alt="Visualización 3D de Ferrum"
+      class="aspect-video w-full rounded-2xl object-cover md:aspect-auto md:h-[380px] md:w-1/2 lg:h-[460px] lg:w-[55%] xl:h-[540px]"
     />
-  </div>
-  <div class="text-md absolute bottom-10 flex space-x-10">
-    <div class="border-r-1 pr-3 font-bold">100+ Modelos</div>
-    <div class="border-r-1 pr-3 font-bold">3D VR Nativo</div>
-    <div class="pr-3 font-bold">3 Plataformas</div>
   </div>
 </section>
