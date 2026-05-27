@@ -612,7 +612,7 @@ impl State {
 
         // TODO:: Continue with shadow mapping
         let light_view: Matrix4<_> = Matrix4::look_at_rh(, center, up);
-        let light_proj: Matrix4<_> = ortho(left, right, bottom, top, near, far)
+        let light_projç: Matrix4<_> = ortho(left, right, bottom, top, near, far);
 
         let light_view_proj: Matrix4<_> = light_proj * light_view;
         self.light_uniform.light_view_proj = light_view_proj.to_raw();

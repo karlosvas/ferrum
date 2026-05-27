@@ -9,7 +9,7 @@ wasm-opt = false
 
 [dependencies]
 anyhow = "1.0"
-winit = { version = "0.30", default-features = false, features = ["rwh_06"] }
+winit = { version = "0.30", default-features = false, features = ["rwh_06", "x11", "wayland"] }
 env_logger = "0.10"
 log = "0.4"
 wgpu = { version = "28.0", default-features = false, features = ["wgsl", "vulkan", "dx12", "metal"] }

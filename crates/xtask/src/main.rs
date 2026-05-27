@@ -1,22 +1,25 @@
 use {
+    anyhow::Result,
     colored::Colorize,
     std::process::{Command, ExitStatus},
 };
 
-fn main() {
+fn main() -> Result<()> {
     dotenvy::dotenv().ok();
+    tracing_subscriber::fmt::init();
 
     let args: Vec<String> = std::env::args().collect();
     match args.get(1).map(|a| a.as_str()) {
-        Some("web") => compile_web(),
-        Some("rpi") => compile_rpi(),
-        Some("vercel-deploy") => compile_and_publish_web(),
-        Some("run") => run_all(),
-        _ => eprintln!("Uso cargo xtask <comando>"),
+        Some("web") => compile_web()?,
+        Some("rpi") => compile_rpi()?,
+        Some("run") => run_app()?,
+        _ => anyhow::bail!("Uso cargo xtask <comando>"),
     }
+
+    Ok(())
 }
 
-fn compile_web() {
+fn compile_web() -> Result<()> {
     let status = Command::new("wasm-pack")
         .args([
             "build",
@@ -26,31 +29,64 @@ fn compile_web() {
             "--out-dir",
             "./www/public/pkg",
         ])
-        .status()
-        .expect(&"wasm-pack not found".red().to_string());
+        .status()?;
 
-    assert!(status.success(), "wasm-pack failed");
-    println!("{}", "✓ WSM compiled succesfuly".green());
+    anyhow::ensure!(status.success(), "wasm-pack failed");
+    tracing::info!("{}", "✓ WSM compiled succesfuly".green());
+
+    Ok(())
 }
 
-fn compile_and_publish_web() {
-    compile_web();
+fn setup_rpi() -> Result<()> {
+    compile_rpi()?;
+    connect_rpi()?;
 
-    let status: ExitStatus = Command::new("cmd")
-        .args(["/C", "vercel deploy --yes"])
-        .status()
-        .expect(&"vercel command not found".red().to_string());
-    assert!(status.success(), "vercel deploy failed");
-
-    println!("{}", "✓ Deployed to Vercel".green());
+    Ok(())
 }
 
-fn compile_rpi() {
-    let wsl_user: String = std::env::var("WSL_USER").unwrap_or("karlos".into());
-    let cargo_path: String = format!("/home/{}/.cargo/bin/cargo", wsl_user);
+fn connect_rpi() -> Result<()> {
+    let user: String = std::env::var("RPI_USER")?;
+    let host: String = std::env::var("RPI_HOST")?;
 
+    let dest: String = format!("{}@{}:~/rpi", user, host);
+
+    let status: ExitStatus = Command::new("scp")
+        .args(["target/aarch64-unknown-linux-gnu/release/rpi", &dest])
+        .status()?;
+
+    anyhow::ensure!(status.success(), "scp deploy failed");
+    tracing::info!("{}", "✓ Deployed to Raspberry Pi".green());
+
+    let remote_cmd: String = "chmod +x ~/rpi && ~/rpi &".to_string();
+    let status: ExitStatus = Command::new("ssh")
+        .args([format!("{}@{}", user, host), remote_cmd])
+        .status()?;
+
+    anyhow::ensure!(status.success(), "ssh exec failed");
+    tracing::info!("{}", "✓ Running on Pi".green());
+
+    Ok(())
+}
+
+fn run_app() -> Result<()> {
+    if let Err(e) = setup_rpi() {
+        tracing::warn!("RPI setup skipped (opcional): {e}");
+    }
+
+    let status: ExitStatus = Command::new("cargo")
+        .args(["run", "-p", "engine"])
+        .status()?;
+
+    anyhow::ensure!(status.success(), "engine failed");
+
+    Ok(())
+}
+
+fn compile_rpi() -> Result<()> {
     if cfg!(target_os = "windows") {
-        let status = Command::new("wsl")
+        let wsl_user: String = std::env::var("WSL_USER")?;
+        let cargo_path: String = format!("/home/{}/.cargo/bin/cargo", wsl_user);
+        let status: ExitStatus = Command::new("wsl")
             .args([
                 "-d",
                 "Ubuntu",
@@ -61,10 +97,10 @@ fn compile_rpi() {
                 "xtask",
                 "rpi",
             ])
-            .status()
-            .expect("wsl not found");
-        assert!(status.success(), "wsl xtask rpi failed");
-        return;
+            .status()?;
+
+        anyhow::ensure!(status.success(), "wsl xtask rpi failed");
+        return Ok(());
     }
 
     let status: ExitStatus = Command::new("cross")
@@ -76,38 +112,10 @@ fn compile_rpi() {
             "--target",
             "aarch64-unknown-linux-gnu",
         ])
-        .status()
-        .expect(&"cross not found".red().to_string());
-    assert!(status.success(), "cross build failed");
-    println!("{}", "✓ Compiled for aarch64".green());
+        .status()?;
 
-    let user: String = std::env::var("PI_USER").expect("PI_USER not set");
-    let host: String = std::env::var("PI_HOST").expect("PI_HOST not set");
+    anyhow::ensure!(status.success(), "cross build failed");
+    tracing::info!("{}", "✓ Compiled for aarch64".green());
 
-    let dest: String = format!("{}@{}:~/rpi", user, host);
-
-    let status = Command::new("scp")
-        .args(["target/aarch64-unknown-linux-gnu/release/rpi", &dest])
-        .status()
-        .expect(&"scp failed".red().to_string());
-    assert!(status.success(), "scp deploy failed");
-    println!("{}", "✓ Deployed to Raspberry Pi".green());
-
-    let remote_cmd = "chmod +x ~/rpi && ~/rpi &".to_string();
-    let status = Command::new("ssh")
-        .args([format!("{}@{}", user, host), remote_cmd])
-        .status()
-        .expect(&"ssh failed".red().to_string());
-    assert!(status.success(), "ssh exec failed");
-    println!("{}", "✓ Running on Pi".green());
-}
-
-fn run_all() {
-    compile_rpi();
-
-    let status = Command::new("cargo")
-        .args(["run", "-p", "engine"])
-        .status()
-        .expect(&"cargo run failed".red().to_string());
-    assert!(status.success(), "engine failed");
+    Ok(())
 }
