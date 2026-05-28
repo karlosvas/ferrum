@@ -1,16 +1,18 @@
 ---
-const props = Astro.props;
+const {url, plan} = Astro.props;
 ---
 
-<button
-  {...props}
-  class="from-primary to-primary-light relative mt-10 flex w-full cursor-pointer justify-center rounded-2xl bg-linear-to-r py-1 align-middle transition-all duration-200 hover:translate-y-0.5 hover:opacity-90"
->
-  <div class="absolute inset-0 bottom-[-20px] -z-10 opacity-20">
-    <div
-      class="bg-primary absolute bottom-0 left-0 h-20 w-full rounded-4xl blur-[20px]"
+<a href={url}>
+    <button
+     data-plan={plan}
+    class="from-primary to-primary-light relative mt-10 flex w-full cursor-pointer justify-center rounded-2xl bg-linear-to-r py-1 align-middle transition-all duration-200 hover:translate-y-0.5 hover:opacity-90"
     >
+    <div class="absolute inset-0 bottom-[-20px] -z-10 opacity-20">
+      <div
+      class="bg-primary absolute bottom-0 left-0 h-20 w-full rounded-4xl blur-[20px]"
+      >
     </div>
   </div>
   <slot />
-</button>
+  </button>
+</a>

@@ -2,8 +2,23 @@
 import Header from "@/components/Header.astro";
 import Footer from "@/components/Footer.astro";
 import Layout from "../layouts/Layout.astro";
-import "@/styles/global.css";
 import GradientButton from "@/components/GradientButton.astro";
+
+const PlanType = {
+  FREE: "FREE",
+  STUDIO: "STUDIO",
+  ENTERPRISE: "ENTERPRISE",
+} as const;
+
+type PlanType = typeof PlanType[keyof typeof PlanType];
+
+function getStripeUrl(plan: PlanType): string {
+  switch (plan) {
+    case PlanType.FREE:      return "";
+    case PlanType.STUDIO:    return "https://buy.stripe.com/3cI9AV8467rLdqqdsQ57W00";
+    case PlanType.ENTERPRISE: return "/contacto";
+  }
+}
 
 const plans = [
   {
@@ -34,7 +49,7 @@ const plans = [
   },
   {
     name: "STUDIO",
-    price: "$100",
+    price: "$20",
     period: "/siempre",
     description:
       "Para estudios indies, licencia comercial completa sin royalties",
@@ -92,26 +107,26 @@ const plans = [
 
 <Layout>
   <Header />
-  <main class="m-auto mt-20 h-fit max-w-[90%] px-5 md:px-20 lg:max-w-[100%]">
+  <main class="m-auto mt-20 h-fit max-w-[90%]">
     <section
-      class="py-20 px-5 md:px-20 max-w-[90%] lg:max-w-[70%] mx-auto"
+      class="py-20 px-5 max-w-[90%] xl:max-w-[80%] mx-auto "
     >
-      <div class="text-center mb-12">
+      <div class="text-center mb-12 ">
         <p class="tracking-widest text-xs text-muted mb-2 font-mono">LICENCIA PERPETUA</p>
         <h2 class="text-3xl font-medium">Un pago para siempre</h2>
         <p class="text-sm text-muted mt-2">Sin subbscripciones, sin sorpresas</p>
       </div>
 
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 ">
         {plans.map((plan) => (
           <div class:list={[
-            "rounded-xl p-6 flex flex-col font-mono relative",
+            "rounded-xl p-14 flex flex-col font-mono relative m-5",
             plan.featured
             ? "border-2 border-info"
             : "border border-border"
           ]}>
             {plan.featured && (
-              <span class="absolute -top-px left-1/2 -translate-x-1/2 bg-info text-info-foreground text-[11px] tracking-wide px-3 py-1 rounded-b-md">
+              <span class="absolute mt-5 -top-px left-1/2 -translate-x-1/2 bg-info text-info-foreground text-[11px] tracking-wide px-3 py-1 rounded-b-md">
                 Mas Popular
               </span>
             )}
@@ -126,7 +141,12 @@ const plans = [
               ]}> - {f.text}</li>
             ))}
            </ul>
-           <GradientButton data-plan={plan.name}>{plan.cta}</GradientButton>
+           <p class="text-center">
+              {plan.price}
+           </p>
+           <GradientButton url={getStripeUrl(plan.name as PlanType)} plan={plan.name}>
+            {plan.cta}
+          </GradientButton>
           </div>
         ))}
       </div>
