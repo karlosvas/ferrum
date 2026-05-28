@@ -1,0 +1,404 @@
+---
+import Footer from "@/components/Footer.astro";
+import Header from "@/components/Header.astro";
+import Layout from "@/layouts/Layout.astro";
+---
+
+<Layout>
+  <Header />
+  <main class="m-auto h-fit max-w-[90%] px-5 md:px-20 lg:max-w-[70%] mb-20">
+    <section class="relative py-16">
+      <!-- Glow -->
+      <div class="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
+        <div
+          class="bg-primary absolute top-1/3 left-1/2 h-[400px] w-[400px] -translate-x-1/2 -translate-y-1/2 rounded-full opacity-8 blur-[120px]"
+        >
+        </div>
+      </div>
+
+      <!-- Page header -->
+      <div class="mb-10 text-center">
+        <span
+          class="bg-primary/10 border-primary/20 text-primary-light mb-4 inline-block rounded-full border px-4 py-1.5 text-sm font-medium"
+          >Legal</span
+        >
+        <h1 class="text-3xl font-bold text-white sm:text-4xl">
+          Información Legal
+        </h1>
+        <p class="text-muted mt-3 text-base">
+          Privacidad, términos de uso y créditos del proyecto Ferrum.
+        </p>
+      </div>
+
+      <!-- Tab nav -->
+      <nav class="mb-10 flex justify-center gap-2 flex-wrap">
+        {
+          [
+            { id: "privacidad", label: "Política de Privacidad" },
+            { id: "terminos", label: "Términos de Uso" },
+            { id: "creditos", label: "Créditos" },
+          ].map((tab) => (
+            <button
+              data-tab={tab.id}
+              class="tab-btn rounded-xl border border-white/10 px-5 py-2.5 text-sm font-medium text-muted transition-all duration-200 hover:border-primary/40 hover:text-white"
+            >
+              {tab.label}
+            </button>
+          ))
+        }
+      </nav>
+
+      <!-- Sections -->
+      <div
+        class="bg-secondary/60 relative rounded-2xl border border-white/5 p-8 shadow-2xl backdrop-blur-sm"
+      >
+        <!-- Accent line -->
+        <div
+          class="from-primary to-primary-light absolute inset-x-0 top-0 h-px rounded-t-2xl bg-gradient-to-r opacity-60"
+        >
+        </div>
+
+        <!-- Privacidad -->
+        <div id="tab-privacidad" class="tab-content space-y-6">
+          <h2 class="text-primary-light text-2xl font-bold">
+            Política de Privacidad
+          </h2>
+          <p class="text-muted text-sm">Última actualización: mayo de 2026</p>
+
+          <div class="space-y-5 text-sm leading-relaxed text-gray-300">
+            <div>
+              <h3 class="mb-2 font-semibold text-white">
+                1. Responsable del tratamiento
+              </h3>
+              <p>
+                Ferrum es un proyecto académico de Trabajo de Fin de Grado
+                desarrollado de forma individual. No existe entidad jurídica
+                asociada. Para cualquier consulta puedes utilizar el formulario
+                de contacto disponible en este sitio.
+              </p>
+            </div>
+
+            <div>
+              <h3 class="mb-2 font-semibold text-white">
+                2. Datos que recopilamos
+              </h3>
+              <p>
+                Únicamente recopilamos los datos que tú nos proporcionas
+                voluntariamente a través del formulario de contacto: nombre,
+                dirección de correo electrónico, asunto y mensaje. No
+                recopilamos datos de navegación, cookies de seguimiento ni
+                información de pago.
+              </p>
+            </div>
+
+            <div>
+              <h3 class="mb-2 font-semibold text-white">
+                3. Finalidad del tratamiento
+              </h3>
+              <p>
+                Los datos del formulario se utilizan exclusivamente para
+                responder a tu consulta. No se ceden a terceros, no se usan para
+                fines comerciales ni se almacenan más allá del tiempo necesario
+                para gestionar tu solicitud.
+              </p>
+            </div>
+
+            <div>
+              <h3 class="mb-2 font-semibold text-white">
+                4. Servicios de terceros
+              </h3>
+              <p>
+                El envío de correos se gestiona mediante{" "}
+                <a
+                  href="https://resend.com"
+                  target="_blank"
+                  class="text-primary-light hover:underline">Resend</a
+                >, cuya política de privacidad puedes consultar en su sitio web.
+                El sitio web está alojado en infraestructura estándar sin
+                analíticas adicionales.
+              </p>
+            </div>
+
+            <div>
+              <h3 class="mb-2 font-semibold text-white">5. Tus derechos</h3>
+              <p>
+                Puedes solicitar el acceso, rectificación o eliminación de
+                cualquier dato que nos hayas proporcionado contactándonos a
+                través del formulario de contacto.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Términos de Uso -->
+        <div id="tab-terminos" class="tab-content hidden space-y-6">
+          <h2 class="text-primary-light text-2xl font-bold">Términos de Uso</h2>
+          <p class="text-muted text-sm">Última actualización: mayo de 2026</p>
+
+          <div class="space-y-5 text-sm leading-relaxed text-gray-300">
+            <div>
+              <h3 class="mb-2 font-semibold text-white">1. Licencia</h3>
+              <p>
+                Ferrum se distribuye bajo la{" "}
+                <a
+                  href="https://github.com/karlosvas/ferrum/blob/main/LICENSE"
+                  target="_blank"
+                  class="text-primary-light hover:underline"
+                  >Licencia GNU General Public License v3.0</a
+                >. Eres libre de usar, estudiar, modificar y distribuir el
+                software siempre que mantengas la misma licencia en las obras
+                derivadas.
+              </p>
+            </div>
+
+            <div>
+              <h3 class="mb-2 font-semibold text-white">2. Uso aceptable</h3>
+              <p>
+                Ferrum es un motor educativo orientado a la visualización de
+                biología vegetal. Puedes utilizarlo para aprendizaje, docencia,
+                investigación académica y proyectos personales. No está
+                permitido usarlo para fines fraudulentos ni para generar
+                contenido engañoso.
+              </p>
+            </div>
+
+            <div>
+              <h3 class="mb-2 font-semibold text-white">
+                3. Exención de responsabilidad
+              </h3>
+              <p>
+                El software se proporciona <em>"tal cual"</em>, sin garantías de
+                ningún tipo. El autor no se hace responsable de daños directos o
+                indirectos derivados de su uso. Los modelos botánicos incluidos
+                son aproximaciones educativas y no deben usarse como referencia
+                científica certificada.
+              </p>
+            </div>
+
+            <div>
+              <h3 class="mb-2 font-semibold text-white">
+                4. Propiedad intelectual
+              </h3>
+              <p>
+                El código fuente está disponible en GitHub. Los modelos 3D,
+                imágenes y demás recursos incluidos en el proyecto pertenecen a
+                sus respectivos autores y se referencian en la sección de
+                Créditos. Si detectas algún contenido con licencia incompatible,
+                contáctanos.
+              </p>
+            </div>
+
+            <div>
+              <h3 class="mb-2 font-semibold text-white">5. Modificaciones</h3>
+              <p>
+                Estos términos pueden actualizarse en cualquier momento. Los
+                cambios significativos se comunicarán a través del repositorio
+                de GitHub.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Créditos -->
+        <div id="tab-creditos" class="tab-content hidden space-y-6">
+          <h2 class="text-primary-light text-2xl font-bold">Créditos</h2>
+          <p class="text-muted text-sm">
+            Ferrum existe gracias a estas tecnologías y sus comunidades.
+          </p>
+
+          <div class="grid gap-6 sm:grid-cols-2">
+            <!-- Motor -->
+            <div class="rounded-xl border border-white/5 bg-white/3 p-5">
+              <h3 class="mb-4 font-semibold text-white">Motor 3D (Rust)</h3>
+              <ul class="space-y-3">
+                {
+                  [
+                    {
+                      name: "Rust",
+                      role: "Lenguaje principal del motor",
+                      url: "https://www.rust-lang.org",
+                    },
+                    {
+                      name: "wgpu",
+                      role: "API gráfica multiplataforma (Vulkan / Metal / DX12 / WebGL)",
+                      url: "https://wgpu.rs",
+                    },
+                    {
+                      name: "winit",
+                      role: "Gestión de ventanas y eventos de entrada",
+                      url: "https://github.com/rust-windowing/winit",
+                    },
+                    {
+                      name: "cgmath",
+                      role: "Álgebra lineal y transformaciones 3D",
+                      url: "https://github.com/rustgd/cgmath",
+                    },
+                    {
+                      name: "bytemuck",
+                      role: "Manipulación segura de bytes para GPU",
+                      url: "https://github.com/Lokathor/bytemuck",
+                    },
+                    {
+                      name: "tobj",
+                      role: "Carga de modelos OBJ / MTL",
+                      url: "https://github.com/Twinklebear/tobj",
+                    },
+                    {
+                      name: "image",
+                      role: "Decodificación de texturas (PNG, JPEG, HDR, OpenEXR)",
+                      url: "https://github.com/image-rs/image",
+                    },
+                  ].map((dep) => (
+                    <li class="flex items-start gap-3">
+                      <span class="text-primary mt-0.5 text-xs">▸</span>
+                      <div>
+                        <a
+                          href={dep.url}
+                          target="_blank"
+                          class="text-primary-light text-sm font-medium hover:underline"
+                        >
+                          {dep.name}
+                        </a>
+                        <p class="text-muted text-xs">{dep.role}</p>
+                      </div>
+                    </li>
+                  ))
+                }
+              </ul>
+            </div>
+
+            <!-- Web + Extras -->
+            <div class="space-y-6">
+              <div class="rounded-xl border border-white/5 bg-white/3 p-5">
+                <h3 class="mb-4 font-semibold text-white">Web</h3>
+                <ul class="space-y-3">
+                  {
+                    [
+                      {
+                        name: "Astro",
+                        role: "Framework del sitio web",
+                        url: "https://astro.build",
+                      },
+                      {
+                        name: "Tailwind CSS",
+                        role: "Estilos y diseño",
+                        url: "https://tailwindcss.com",
+                      },
+                      {
+                        name: "TypeScript",
+                        role: "Lógica del cliente",
+                        url: "https://www.typescriptlang.org",
+                      },
+                      {
+                        name: "Resend",
+                        role: "Envío de emails del formulario de contacto",
+                        url: "https://resend.com",
+                      },
+                    ].map((dep) => (
+                      <li class="flex items-start gap-3">
+                        <span class="text-primary mt-0.5 text-xs">▸</span>
+                        <div>
+                          <a
+                            href={dep.url}
+                            target="_blank"
+                            class="text-primary-light text-sm font-medium hover:underline"
+                          >
+                            {dep.name}
+                          </a>
+                          <p class="text-muted text-xs">{dep.role}</p>
+                        </div>
+                      </li>
+                    ))
+                  }
+                </ul>
+              </div>
+
+              <div class="rounded-xl border border-white/5 bg-white/3 p-5">
+                <h3 class="mb-4 font-semibold text-white">Estándares y plataformas</h3>
+                <ul class="space-y-3">
+                  {
+                    [
+                      {
+                        name: "WebAssembly",
+                        role: "Ejecución del motor en el navegador",
+                        url: "https://webassembly.org",
+                      },
+                      {
+                        name: "wasm-bindgen",
+                        role: "Interoperabilidad Rust ↔ JavaScript",
+                        url: "https://github.com/rustwasm/wasm-bindgen",
+                      },
+                      {
+                        name: "OpenXR",
+                        role: "Estándar abierto de realidad virtual y aumentada",
+                        url: "https://www.khronos.org/openxr",
+                      },
+                    ].map((dep) => (
+                      <li class="flex items-start gap-3">
+                        <span class="text-primary mt-0.5 text-xs">▸</span>
+                        <div>
+                          <a
+                            href={dep.url}
+                            target="_blank"
+                            class="text-primary-light text-sm font-medium hover:underline"
+                          >
+                            {dep.name}
+                          </a>
+                          <p class="text-muted text-xs">{dep.role}</p>
+                        </div>
+                      </li>
+                    ))
+                  }
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <p class="text-muted border-t border-white/5 pt-4 text-xs">
+            ¿Falta algún crédito? Abre un{" "}
+            <a
+              href="https://github.com/karlosvas/ferrum/issues"
+              target="_blank"
+              class="text-primary-light hover:underline">issue en GitHub</a
+            >.
+          </p>
+        </div>
+      </div>
+    </section>
+  </main>
+  <Footer />
+</Layout>
+
+<script>
+  const buttons = document.querySelectorAll<HTMLButtonElement>(".tab-btn");
+  const contents = document.querySelectorAll<HTMLElement>(".tab-content");
+
+  const activeClasses = [
+    "bg-primary/15",
+    "border-primary/50",
+    "text-white",
+  ];
+
+  function activate(id: string) {
+    buttons.forEach((btn) => {
+      const isActive = btn.dataset.tab === id;
+      activeClasses.forEach((cls) => btn.classList.toggle(cls, isActive));
+      if (isActive) btn.classList.remove("text-muted");
+      else btn.classList.add("text-muted");
+    });
+    contents.forEach((el) => {
+      el.classList.toggle("hidden", el.id !== `tab-${id}`);
+    });
+    history.replaceState(null, "", `#${id}`);
+  }
+
+  buttons.forEach((btn) => {
+    btn.addEventListener("click", () => activate(btn.dataset.tab!));
+  });
+
+  // Activate from URL hash or default to first tab
+  const hash = location.hash.slice(1);
+  const initial =
+    hash && document.getElementById(`tab-${hash}`) ? hash : "privacidad";
+  activate(initial);
+</script>

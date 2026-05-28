@@ -16,7 +16,7 @@ function getStripeUrl(plan: PlanType): string {
   switch (plan) {
     case PlanType.FREE:      return "";
     case PlanType.STUDIO:    return "https://buy.stripe.com/3cI9AV8467rLdqqdsQ57W00";
-    case PlanType.ENTERPRISE: return "/contacto";
+    case PlanType.ENTERPRISE: return "/contact";
   }
 }
 
@@ -107,7 +107,7 @@ const plans = [
 
 <Layout>
   <Header />
-  <main class="m-auto mt-20 h-fit max-w-[90%]">
+  <main class="m-auto mb-20 h-fit max-w-[90%]">
     <section
       class="py-20 px-5 max-w-[90%] xl:max-w-[80%] mx-auto "
     >
@@ -122,11 +122,11 @@ const plans = [
           <div class:list={[
             "rounded-xl p-14 flex flex-col font-mono relative m-5",
             plan.featured
-            ? "border-2 border-info"
+            ? "border border-info"
             : "border border-border"
           ]}>
             {plan.featured && (
-              <span class="absolute mt-5 -top-px left-1/2 -translate-x-1/2 bg-info text-info-foreground text-[11px] tracking-wide px-3 py-1 rounded-b-md">
+              <span class="italic text-orange-600 absolute mt-5 -top-px left-1/2 -translate-x-1/2 bg-info text-info-foreground text-[14px] tracking-wide px-3 py-1 rounded-b-md">
                 Mas Popular
               </span>
             )}
