@@ -1,5 +1,4 @@
 use cgmath::{Matrix3, Matrix4, One, Quaternion, Vector3, Zero};
-use wgpu::wgt::instance;
 
 use crate::{material, structs};
 
@@ -59,7 +58,6 @@ impl Vertex for ModelVertex {
         }
     }
 }
-
 pub trait DrawModel<'a> {
     fn draw_mesh(
         &mut self,
@@ -69,6 +67,7 @@ pub trait DrawModel<'a> {
         instance_buffer: &'a wgpu::Buffer,
         camera_bind_group: &'a wgpu::BindGroup,
         light_bind_group: &'a wgpu::BindGroup,
+        shadow_bind_group: &'a wgpu::BindGroup,
     );
 
     fn draw_model(
@@ -76,6 +75,7 @@ pub trait DrawModel<'a> {
         model: &'a Model,
         camera_bind_group: &'a wgpu::BindGroup,
         light_bind_group: &'a wgpu::BindGroup,
+        shadow_bind_group: &'a wgpu::BindGroup,
     );
 }
 
@@ -91,6 +91,7 @@ where
         instance_buffer: &'a wgpu::Buffer,
         camera_bind_group: &'b wgpu::BindGroup,
         light_bind_group: &'a wgpu::BindGroup,
+        shadow_bind_group: &'a wgpu::BindGroup,
     ) {
         self.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
         self.set_vertex_buffer(1, instance_buffer.slice(..));
@@ -98,6 +99,7 @@ where
         self.set_bind_group(0, &material.bind_group, &[]);
         self.set_bind_group(1, camera_bind_group, &[]);
         self.set_bind_group(2, light_bind_group, &[]);
+        self.set_bind_group(3, shadow_bind_group, &[]);
         self.draw_indexed(0..mesh.indices, 0, instances);
     }
 
@@ -106,6 +108,7 @@ where
         model: &'b Model,
         camera_bind_group: &'b wgpu::BindGroup,
         light_bind_group: &'a wgpu::BindGroup,
+        shadow_bind_group: &'a wgpu::BindGroup,
     ) {
         for mesh in &model.meshes {
             let material: &material::Material = &model.materials[mesh.material];
@@ -116,6 +119,7 @@ where
                 &model.instance_buffer,
                 camera_bind_group,
                 light_bind_group,
+                shadow_bind_group,
             );
         }
     }
@@ -241,13 +245,32 @@ where
         light_bind_group: &'b wgpu::BindGroup,
     ) {
         for mesh in &model.meshes {
-            let material = &model.materials[mesh.material];
+            let material: &material::Material = &model.materials[mesh.material];
             self.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
             self.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
             self.set_bind_group(0, camera_bind_group, &[]);
             self.set_bind_group(1, light_bind_group, &[]);
             self.set_bind_group(2, &material.bind_group, &[]);
             self.draw_indexed(0..mesh.indices, 0, 0..1);
+        }
+    }
+}
+
+pub trait DrawShadow<'a> {
+    fn draw_shadow_model(&mut self, model: &'a Model, light_bind_group: &'a wgpu::BindGroup);
+}
+
+impl<'a, 'b> DrawShadow<'b> for wgpu::RenderPass<'a>
+where
+    'b: 'a,
+{
+    fn draw_shadow_model(&mut self, model: &'a Model, light_bind_group: &'b wgpu::BindGroup) {
+        for mesh in &model.meshes {
+            self.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
+            self.set_vertex_buffer(1, model.instance_buffer.slice(..));
+            self.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+            self.set_bind_group(0, light_bind_group, &[]);
+            self.draw_indexed(0..mesh.indices, 0, 0..model.instances.len() as u32);
         }
     }
 }

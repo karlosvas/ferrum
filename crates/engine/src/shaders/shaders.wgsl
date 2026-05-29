@@ -10,6 +10,10 @@ var s_diffuse: sampler;
 var t_normal: texture_2d<f32>;
 @group(0) @binding(3)
 var s_normal: sampler;
+@group(3) @binding(0)
+var shadow_map: texture_depth_2d;
+@group(3) @binding(1)
+var shadow_sampler: sampler_comparison;
 
 struct CameraUniform {
     view_pos: vec4<f32>,
@@ -22,6 +26,7 @@ struct CameraUniform {
 struct Light {
     position: vec3<f32>,
     color: vec3<f32>,
+    light_view_proj: mat4x4<f32>,
 }
 
 struct VertexInput {
@@ -49,6 +54,7 @@ struct VertexOutput {
     @location(4) tangent_position: vec3<f32>,
     @location(5) tangent_light_position: vec3<f32>,
     @location(6) tangent_view_position: vec3<f32>,
+    @location(7) light_space_pos: vec4<f32>,
 }
 
 @vertex
@@ -77,6 +83,7 @@ fn vs_main(
     out.tangent_position = tangent_matrix * world_position.xyz;
     out.tangent_view_position = tangent_matrix * camera.view_pos.xyz;
     out.tangent_light_position = tangent_matrix * light.position;
+    out.light_space_pos = light.light_view_proj * world_position;
     return out;
 }
 
@@ -106,6 +113,20 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let specular_strength = pow(max(dot(tanget_normal, half_dir), 0.0), 32.0);
     let specular_color = specular_strength * light.color * attenuation;
 
-    let result = (ambient_color + diffuse_color + specular_color) * object_color.rgb * in.color;
+    // Shadow: project fragment into light-space NDC, then compare depth.
+    let proj_coords = in.light_space_pos.xyz / in.light_space_pos.w;
+    // NDC x/y [-1,1] → UV [0,1]; flip Y because texture V goes down.
+    let shadow_uv = proj_coords.xy * vec2<f32>(0.5, -0.5) + vec2<f32>(0.5, 0.5);
+    let current_depth = proj_coords.z - 0.002; // small bias to avoid acne
+
+    var shadow_factor = 1.0;
+    if (shadow_uv.x >= 0.0 && shadow_uv.x <= 1.0 &&
+        shadow_uv.y >= 0.0 && shadow_uv.y <= 1.0 &&
+        current_depth >= 0.0 && current_depth <= 1.0) {
+        // Returns 1.0 if fragment is lit (depth <= shadow map), 0.0 if in shadow.
+        shadow_factor = textureSampleCompare(shadow_map, shadow_sampler, shadow_uv, current_depth);
+    }
+
+    let result = (ambient_color + shadow_factor * (diffuse_color + specular_color)) * object_color.rgb * in.color;
     return vec4<f32>(result, object_color.a);
 }

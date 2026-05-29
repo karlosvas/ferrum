@@ -8,16 +8,16 @@ mod resources;
 mod structs;
 mod texture;
 
-use cgmath::{Deg, Matrix4, Quaternion, Vector3, ortho};
+use cgmath::{Deg, Matrix4, Point3, Quaternion, Vector3, ortho};
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
-use wgpu::TextureView;
+use wgpu::{PolygonMode::Point, TextureView};
 #[cfg(target_arch = "wasm32")]
 use winit::event_loop::EventLoopProxy;
 
 use crate::{
     hdr::HdrPipeline,
-    models::{InstanceRaw, ModelVertex, Vertex},
+    models::{DrawShadow, InstanceRaw, ModelVertex, Vertex},
     texture::CubeTexture,
 };
 use {
@@ -65,6 +65,11 @@ pub struct State {
     pub light_buffer: Buffer,
     pub light_bind_group: wgpu::BindGroup,
     pub light_render_pipeline: wgpu::RenderPipeline,
+
+    // Shadow
+    pub shadow_texture: texture::Texture,
+    pub shadow_bind_group: wgpu::BindGroup,
+    pub shadow_render_pipeline: wgpu::RenderPipeline,
 
     // HDR
     pub hdr: hdr::HdrPipeline,
@@ -257,7 +262,7 @@ impl State {
         let hdr: HdrPipeline = hdr::HdrPipeline::new(&device, &config);
 
         let hdr_loader: hdr::HdrLoader = hdr::HdrLoader::new(&device);
-        let sky_file: &str = "NightSkyHDRI014_16K_HDR.exr";
+        let sky_file: &str = "exr/NightSkyHDRI014_16K_HDR.exr";
         let sky_format: hdr::SkyFormat = if sky_file.ends_with(".exr") {
             hdr::SkyFormat::Exr
         } else {
@@ -334,16 +339,24 @@ impl State {
 
         // Light section
         let light_uniform: light::LightUniform = light::LightUniform {
-            position: [10.0, 0.0, 0.0],
+            position: [20.0, 0.0, 0.0],
+            color: [7.0, 6.95, 6.85],
+            light_view_proj: [
+                [1.0, 0.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0, 0.0],
+                [0.0, 0.0, 1.0, 0.0],
+                [0.0, 0.0, 0.0, 1.0],
+            ],
             _padding: 0,
-            color: [10.0, 8.0, 6.0],
             _padding2: 0,
         };
+
         let light_buffer: Buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("light_buffer"),
             contents: bytemuck::cast_slice(&[light_uniform]),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
+
         let light_bind_group_layout: BindGroupLayout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("light_bind_group_layout"),
@@ -368,12 +381,36 @@ impl State {
             }],
         });
 
+        let shadow_bind_group_layout: BindGroupLayout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("shadow_bind_group_layout"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Depth,
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Comparison),
+                        count: None,
+                    },
+                ],
+            });
+
         let pipeline_render_layout: PipelineLayout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 bind_group_layouts: &[
                     &texture_bind_group_layout,
                     &camera_bind_group_layout,
                     &light_bind_group_layout,
+                    &shadow_bind_group_layout,
                 ],
                 label: Some("render_pipeline_layout"),
                 ..Default::default()
@@ -399,9 +436,51 @@ impl State {
             light::LightUniform::create_render_pipeline(
                 &device,
                 &light_pipeline_layout,
-                hdr.format(),
+                Some(hdr.format()),
                 Some(texture::Texture::DEPTH_FORMAT),
                 &[ModelVertex::desc()],
+                normal_shader,
+            )
+        };
+
+        // Shadow
+        let shadow_texture: texture::Texture =
+            texture::Texture::create_shadow_map(&device, 2048, "depth_texture");
+
+        let shadow_bind_group: BindGroup = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("shadow_bind_group"),
+            layout: &shadow_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&shadow_texture.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&shadow_texture.sampler),
+                },
+            ],
+        });
+
+        let shadow_pipeline_layout: PipelineLayout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("light_pipeline_layout"),
+                bind_group_layouts: &[&light_bind_group_layout],
+                ..Default::default()
+            });
+
+        let shadow_render_pipeline: RenderPipeline = {
+            let normal_shader: ShaderModuleDescriptor = wgpu::ShaderModuleDescriptor {
+                label: Some("shadow_normal_shader"),
+                source: wgpu::ShaderSource::Wgsl(include_str!("shaders/shadow.wgsl").into()),
+            };
+
+            light::LightUniform::create_render_pipeline(
+                &device,
+                &shadow_pipeline_layout,
+                None,
+                Some(texture::Texture::DEPTH_FORMAT),
+                &[ModelVertex::desc(), InstanceRaw::desc()],
                 normal_shader,
             )
         };
@@ -470,6 +549,9 @@ impl State {
             obj_light,
             last_render_time: web_time::Instant::now(),
             depth_texture,
+            shadow_texture,
+            shadow_bind_group,
+            shadow_render_pipeline,
             light_uniform,
             light_buffer,
             light_bind_group,
@@ -513,6 +595,29 @@ impl State {
                 });
 
         {
+            let mut shadow_render_pass: RenderPass =
+                encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("Shadow_render_pass"),
+                    color_attachments: &[],
+                    depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                        view: &self.shadow_texture.view,
+                        depth_ops: Some(wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(1.0),
+                            store: wgpu::StoreOp::Store,
+                        }),
+                        stencil_ops: None,
+                    }),
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                    multiview_mask: None,
+                });
+
+            shadow_render_pass.set_pipeline(&self.shadow_render_pipeline);
+            shadow_render_pass.set_bind_group(0, &self.light_bind_group, &[]);
+            shadow_render_pass.draw_shadow_model(&self.obj_model, &self.light_bind_group);
+            shadow_render_pass.draw_shadow_model(&self.obj_model_2, &self.light_bind_group);
+        }
+        {
             let mut render_pass: RenderPass =
                 encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("render_pass"),
@@ -552,11 +657,13 @@ impl State {
                 &self.obj_model,
                 &self.camera_bind_group,
                 &self.light_bind_group,
+                &self.shadow_bind_group,
             );
             render_pass.draw_model(
                 &self.obj_model_2,
                 &self.camera_bind_group,
                 &self.light_bind_group,
+                &self.shadow_bind_group,
             );
 
             // Sky pipeline last: leverages the depth test (LessEqual with z=1.0)
@@ -610,12 +717,15 @@ impl State {
         ) * old_position)
             .into();
 
-        // TODO:: Continue with shadow mapping
-        let light_view: Matrix4<_> = Matrix4::look_at_rh(, center, up);
-        let light_projç: Matrix4<_> = ortho(left, right, bottom, top, near, far);
+        let light_view: Matrix4<f32> = Matrix4::look_at_rh(
+            self.light_uniform.position.into(),
+            Point3::new(0.0, 0.0, 0.0),
+            Vector3::unit_y(),
+        );
+        let light_proj: Matrix4<f32> = ortho(-20.0, 20.0, -20.0, 20.0, 0.1, 100.0);
 
-        let light_view_proj: Matrix4<_> = light_proj * light_view;
-        self.light_uniform.light_view_proj = light_view_proj.to_raw();
+        let light_view_proj: Matrix4<f32> = light_proj * light_view;
+        self.light_uniform.light_view_proj = cgmath::Matrix4::into(light_view_proj);
 
         self.queue.write_buffer(
             &self.light_buffer,
