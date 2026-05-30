@@ -18,3 +18,4 @@ Thumbs.db
 public/pkg/
 *.hdr
 *.exr
+.env*

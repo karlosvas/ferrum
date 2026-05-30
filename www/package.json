@@ -12,6 +12,7 @@
     "format:write": "prettier --write ."
   },
   "dependencies": {
+    "@astrojs/vercel": "^9.0.5",
     "@tailwindcss/vite": "^4.1.18",
     "astro": "^5.16.6",
     "resend": "^6.12.4",
