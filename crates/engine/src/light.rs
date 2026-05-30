@@ -34,6 +34,8 @@ impl LightUniform {
         depth_format: Option<wgpu::TextureFormat>,
         vertex_layaut: &[wgpu::VertexBufferLayout],
         shader: wgpu::ShaderModuleDescriptor,
+        cull_mode: Option<wgpu::Face>,
+        depth_bias: wgpu::DepthBiasState,
     ) -> RenderPipeline {
         let shader: ShaderModule = device.create_shader_module(shader);
 
@@ -62,7 +64,7 @@ impl LightUniform {
                 topology: wgpu::PrimitiveTopology::TriangleList,
                 strip_index_format: None,
                 front_face: wgpu::FrontFace::Ccw,
-                cull_mode: Some(wgpu::Face::Back),
+                cull_mode,
                 unclipped_depth: false,
                 polygon_mode: wgpu::PolygonMode::Fill,
                 conservative: false,
@@ -72,7 +74,7 @@ impl LightUniform {
                 depth_write_enabled: true,
                 depth_compare: wgpu::CompareFunction::Less,
                 stencil: wgpu::StencilState::default(),
-                bias: wgpu::DepthBiasState::default(),
+                bias: depth_bias,
             }),
             multisample: wgpu::MultisampleState {
                 count: 1,

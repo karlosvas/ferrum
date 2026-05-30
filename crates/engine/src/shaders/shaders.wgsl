@@ -94,7 +94,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     let tanget_normal = normalize(object_normal.xyz * 2.0 - 1.0);
 
-    let ambient_strength = 0.1;
+    let ambient_strength = 0.05;
     let ambient_color = light.color * ambient_strength;
 
     let light_vec = in.tangent_light_position - in.tangent_position;
@@ -117,15 +117,33 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let proj_coords = in.light_space_pos.xyz / in.light_space_pos.w;
     // NDC x/y [-1,1] → UV [0,1]; flip Y because texture V goes down.
     let shadow_uv = proj_coords.xy * vec2<f32>(0.5, -0.5) + vec2<f32>(0.5, 0.5);
-    let current_depth = proj_coords.z - 0.002; // small bias to avoid acne
+    // Slope-dependent bias: larger at grazing angles to prevent light leaking.
+    let cos_theta = clamp(dot(normalize(in.world_normal), normalize(light.position - in.world_position)), 0.0, 1.0);
+    let shadow_bias = mix(0.004, 0.0002, cos_theta);
+    let current_depth = proj_coords.z - shadow_bias;
 
-    var shadow_factor = 1.0;
-    if (shadow_uv.x >= 0.0 && shadow_uv.x <= 1.0 &&
-        shadow_uv.y >= 0.0 && shadow_uv.y <= 1.0 &&
-        current_depth >= 0.0 && current_depth <= 1.0) {
-        // Returns 1.0 if fragment is lit (depth <= shadow map), 0.0 if in shadow.
-        shadow_factor = textureSampleCompare(shadow_map, shadow_sampler, shadow_uv, current_depth);
-    }
+    // 3x3 PCF: averages 9 shadow map samples for smoother shadow edges.
+    // textureSampleCompare must be called from uniform control flow (it needs
+    // implicit derivatives), so we always sample and only afterwards decide whether
+    // the fragment lies inside the light frustum. Sampling out-of-range UVs is safe
+    // because the shadow sampler uses ClampToEdge.
+    let texel = 1.0 / 2048.0;
+    var shadow_sum = 0.0;
+    shadow_sum += textureSampleCompare(shadow_map, shadow_sampler, shadow_uv + vec2<f32>(-texel, -texel), current_depth);
+    shadow_sum += textureSampleCompare(shadow_map, shadow_sampler, shadow_uv + vec2<f32>(  0.0,  -texel), current_depth);
+    shadow_sum += textureSampleCompare(shadow_map, shadow_sampler, shadow_uv + vec2<f32>( texel, -texel), current_depth);
+    shadow_sum += textureSampleCompare(shadow_map, shadow_sampler, shadow_uv + vec2<f32>(-texel,   0.0), current_depth);
+    shadow_sum += textureSampleCompare(shadow_map, shadow_sampler, shadow_uv,                             current_depth);
+    shadow_sum += textureSampleCompare(shadow_map, shadow_sampler, shadow_uv + vec2<f32>( texel,   0.0), current_depth);
+    shadow_sum += textureSampleCompare(shadow_map, shadow_sampler, shadow_uv + vec2<f32>(-texel,  texel), current_depth);
+    shadow_sum += textureSampleCompare(shadow_map, shadow_sampler, shadow_uv + vec2<f32>(  0.0,   texel), current_depth);
+    shadow_sum += textureSampleCompare(shadow_map, shadow_sampler, shadow_uv + vec2<f32>( texel,  texel), current_depth);
+
+    // Fragments outside the light frustum (or beyond its depth range) are fully lit.
+    let in_bounds = shadow_uv.x >= 0.0 && shadow_uv.x <= 1.0 &&
+                    shadow_uv.y >= 0.0 && shadow_uv.y <= 1.0 &&
+                    current_depth >= 0.0 && current_depth <= 1.0;
+    let shadow_factor = select(1.0, shadow_sum / 9.0, in_bounds);
 
     let result = (ambient_color + shadow_factor * (diffuse_color + specular_color)) * object_color.rgb * in.color;
     return vec4<f32>(result, object_color.a);
