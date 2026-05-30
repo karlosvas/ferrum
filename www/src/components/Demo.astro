@@ -58,6 +58,33 @@ import GradientButton from "./GradientButton.astro";
           class="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_55%,rgba(8,13,24,0.65)_100%)]"
         >
         </div>
+        <!-- Aviso de WebGPU no disponible (contenido inyectado por JS) -->
+        <div
+          id="webgpu-warning"
+          class="bg-dark/95 absolute inset-0 hidden flex-col items-center justify-center gap-5 overflow-y-auto px-6 py-8 text-center backdrop-blur-sm"
+        >
+          <span class="text-primary text-4xl leading-none">⚠</span>
+          <div class="space-y-2">
+            <p id="wg-title" class="text-light font-mono text-base font-bold">
+              WebGPU no está disponible
+            </p>
+            <p
+              class="text-light/60 mx-auto max-w-md font-mono text-xs leading-relaxed"
+            >
+              Este motor 3D necesita <span class="text-primary">WebGPU</span> para
+              renderizar.
+            </p>
+          </div>
+          <div id="wg-steps" class="w-full max-w-md"></div>
+          <a
+            href="https://webgpureport.org"
+            target="_blank"
+            rel="noopener"
+            class="text-primary/60 hover:text-primary font-mono text-[11px] underline underline-offset-2"
+          >
+            Comprobar el soporte de mi navegador →
+          </a>
+        </div>
       </div>
       <!-- Footer -->
       <div
@@ -82,8 +109,121 @@ import GradientButton from "./GradientButton.astro";
 
 <script type="module">
   const canvas = document.getElementById("showCanvas");
-  canvas.addEventListener("click", async () => {
+
+  if (!canvas)
+    console.warn("[CanvasDemo] #showCanvas not found in DOM");
+
+  let started = false;
+  let warningBuilt = false;
+
+  // Detecta el navegador para dar instrucciones de activación específicas.
+  function detectBrowser() {
+    const ua = navigator.userAgent;
+    if (/Firefox\//.test(ua)) return { kind: "firefox" };
+    if (/Edg\//.test(ua)) return { kind: "chromium", flag: "edge" };
+    if (navigator.brave) return { kind: "chromium", flag: "brave" };
+    if (/Chrome\/|Chromium\//.test(ua)) return { kind: "chromium", flag: "chrome" };
+    if (/Safari\//.test(ua)) return { kind: "safari" };
+    return { kind: "other" };
+  }
+
+  // Botón que copia un valor al portapapeles con feedback visual.
+  function copyChip(value) {
+    return `
+      <button type="button"
+        class="wg-copy group mt-1.5 flex w-full items-center justify-between gap-3 rounded-md border border-primary/25 bg-secondary/60 px-3 py-2 text-left transition hover:border-primary/60"
+        data-copy="${value}">
+        <code class="text-primary text-xs break-all">${value}</code>
+        <span class="copy-label text-light/50 group-hover:text-light shrink-0 text-[10px] tracking-wider uppercase">Copiar</span>
+      </button>`;
+  }
+
+  function step(n, text) {
+    return `<li class="leading-relaxed"><span class="text-primary/70">${n}.</span> ${text}</li>`;
+  }
+
+  // Construye el contenido del aviso según el navegador (una sola vez).
+  function buildWarningContent() {
+    if (warningBuilt) return;
+    const stepsEl = document.getElementById("wg-steps");
+    const titleEl = document.getElementById("wg-title");
+    if (!stepsEl) return;
+
+    const { kind, flag } = detectBrowser();
+    let html = "";
+
+    if (kind === "chromium") {
+      const flagUrl = `${flag}://flags/#enable-unsafe-webgpu`;
+      if (titleEl) titleEl.textContent = "Activa WebGPU en tu navegador";
+      html = `
+        <ol class="text-light/80 space-y-3 text-left font-mono text-xs">
+          ${step(1, "Copia esta dirección y ábrela en una pestaña nueva:")}
+          ${copyChip(flagUrl)}
+          ${step(2, 'Cambia la opción a <span class="text-light">“Enabled”</span>.')}
+          ${step(3, 'Pulsa <span class="text-light">“Relaunch”</span> para reiniciar el navegador.')}
+        </ol>`;
+    } else if (kind === "firefox") {
+      if (titleEl) titleEl.textContent = "Activa WebGPU en Firefox";
+      html = `
+        <ol class="text-light/80 space-y-3 text-left font-mono text-xs">
+          ${step(1, "Abre esta dirección en una pestaña nueva:")}
+          ${copyChip("about:config")}
+          ${step(2, 'Busca esta preferencia y ponla en <span class="text-light">true</span>:')}
+          ${copyChip("dom.webgpu.enabled")}
+          ${step(3, "Reinicia Firefox. En Linux, Firefox Nightly da mejor soporte.")}
+        </ol>`;
+    } else {
+      if (titleEl) titleEl.textContent = "Tu navegador no soporta WebGPU";
+      html = `
+        <p class="text-light/70 mx-auto max-w-md font-mono text-xs leading-relaxed">
+          Usa una versión reciente de
+          <span class="text-light">Chrome</span>,
+          <span class="text-light">Edge</span>,
+          <span class="text-light">Brave</span> o
+          <span class="text-light">Safari</span> para ver la demo.
+        </p>`;
+    }
+
+    stepsEl.innerHTML = html;
+
+    stepsEl.querySelectorAll(".wg-copy").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const label = btn.querySelector(".copy-label");
+        try {
+          await navigator.clipboard.writeText(btn.dataset.copy);
+          const prev = label.textContent;
+          label.textContent = "¡Copiado!";
+          btn.classList.add("border-primary");
+          setTimeout(() => {
+            label.textContent = prev;
+            btn.classList.remove("border-primary");
+          }, 1500);
+        } catch (e) {
+          if (label) label.textContent = "Copia manual";
+        }
+      });
+    });
+
+    warningBuilt = true;
+  }
+
+  function showWebGPUWarning() {
+    buildWarningContent();
+    const warning = document.getElementById("webgpu-warning");
+    if (warning) {
+      warning.classList.remove("hidden");
+      warning.classList.add("flex");
+    }
+  }
+
+  canvas?.addEventListener("click", async () => {
+    console.log("[ferrum] click recibido");
     const wrapper = document.getElementById("canvas-wrapper");
+
+    if (!wrapper) {
+      console.warn("[CanvasDemo] #canvas-wrapper not found in DOM");
+      return;
+    }
 
     wrapper.classList.remove("hidden");
     wrapper.classList.add("flex");
@@ -96,13 +236,55 @@ import GradientButton from "./GradientButton.astro";
       wrapper.style.transform = "translateY(0)";
     });
 
-    await new Promise((r) =>
-      wrapper.addEventListener("transitionend", r, { once: true }),
-    );
+    // El init del wasm NO debe depender de la animación: si transitionend no
+    // dispara, init nunca se llamaría. Lo lanzamos una sola vez, sin gating.
+    if (started) return;
 
-    const { default: init, run_web } = await import("/pkg/ferrum.js");
-    await init();
-    run_web();
+    // El motor requiere WebGPU (usa un compute shader para el cielo HDR, que
+    // WebGL2 no soporta). Si el navegador no lo expone, o lo expone pero no hay
+    // adaptador (caso típico de Firefox sin Vulkan/flags), avisamos y no
+    // cargamos el wasm para evitar el canvas negro y el panic en consola.
+    let hasWebGPU = false;
+    if (navigator.gpu) {
+      try {
+        hasWebGPU = (await navigator.gpu.requestAdapter()) != null;
+      } catch (e) {
+        console.warn("[ferrum] requestAdapter() falló:", e);
+      }
+    }
+
+    if (!hasWebGPU) {
+      console.warn("[ferrum] WebGPU no disponible en este navegador");
+      showWebGPUWarning();
+      return;
+    }
+
+    started = true;
+
+    console.log("[ferrum] importando /pkg/engine.js …");
+    let init;
+    try {
+      ({ default: init } = await import("/pkg/engine.js"));
+    } catch (e) {
+      console.error("[ferrum] No se pudo cargar /pkg/engine.js:", e);
+      started = false;
+      return;
+    }
+
+    console.log("[ferrum] init() …");
+    try {
+      await init();
+      console.log("[ferrum] init() OK (run_web corre vía wasm-bindgen start)");
+    } catch (e) {
+      // winit cede el control al event loop del navegador lanzando una
+      // excepción de "control flow". NO es un error real: el motor sigue vivo.
+      const msg = String(e?.message ?? e);
+      if (msg.includes("control flow")) {
+        console.log("[ferrum] motor en marcha (winit control-flow, ignorado)");
+      } else {
+        console.error("[ferrum] Fallo al inicializar el módulo WASM:", e);
+      }
+    }
   });
 
   const closeButton = document.getElementById("closeCanvas");

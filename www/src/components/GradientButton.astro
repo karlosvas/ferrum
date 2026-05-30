@@ -1,10 +1,11 @@
 ---
-const {url, plan} = Astro.props;
+const {url, plan, id} = Astro.props;
 ---
 
 <a href={url}>
     <button
      data-plan={plan}
+     id={id}
     class="from-primary to-primary-light relative mt-10 flex w-full cursor-pointer justify-center rounded-2xl bg-linear-to-r py-1 align-middle transition-all duration-200 hover:translate-y-0.5 hover:opacity-90"
     >
     <div class="absolute inset-0 bottom-[-20px] -z-10 opacity-20">

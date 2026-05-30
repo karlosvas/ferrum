@@ -1,6 +1,5 @@
 ---
 import DownloadIcon from "@/assets/icons/DownloadIcon.astro";
-import GradientButton from "./GradientButton.astro";
 ---
 
 <section class="my-20 md:my-48">
@@ -14,10 +13,24 @@ import GradientButton from "./GradientButton.astro";
         especializado en visualización de biología vegetal educativa con soporte
         completo para realidad virtual.
       </p>
-      <GradientButton>
-        <span class="mx-2">Descargar Ahora</span><DownloadIcon />
-      </GradientButton>
+
+      <a
+        id="download-btn"
+        href="https://github.com/karlosvas/ferrum/releases/latest"
+        target="_blank"
+        class="from-primary to-primary-light relative mt-10 flex w-full cursor-pointer items-center justify-center gap-2 rounded-2xl bg-linear-to-r py-3 transition-all duration-200 hover:translate-y-0.5 hover:opacity-90"
+      >
+        <div class="absolute inset-0 -bottom-5 -z-10 opacity-20">
+          <div class="bg-primary absolute bottom-0 left-0 h-20 w-full rounded-4xl blur-[20px]">
+          </div>
+        </div>
+        <span id="download-label" class="mx-2">Descargar Ahora</span>
+        <DownloadIcon />
+      </a>
+
+      <p id="download-platform" class="text-muted mt-3 text-center text-xs"></p>
     </span>
+
     <img
       src="img/microscopio.webp"
       alt="Visualización microscópica en Ferrum"
@@ -25,3 +38,31 @@ import GradientButton from "./GradientButton.astro";
     />
   </div>
 </section>
+
+<script>
+  const BASE = "https://github.com/karlosvas/ferrum/releases/latest/download";
+
+  const platform = (() => {
+    const ua = navigator.userAgent;
+    if (ua.includes("Win")) return "windows";
+    if (ua.includes("Mac")) return "macos";
+    return "linux";
+  })();
+
+  const files: Record<string, { file: string; label: string }> = {
+    windows: { file: "ferrum-windows-x86_64.exe", label: "Descargar para Windows" },
+    macos:   { file: "ferrum-macos-aarch64",       label: "Descargar para macOS" },
+    linux:   { file: "ferrum-linux-x86_64",         label: "Descargar para Linux" },
+  };
+
+  const { file, label } = files[platform];
+
+  const btn = document.getElementById("download-btn") as HTMLAnchorElement;
+  const lbl = document.getElementById("download-label") as HTMLSpanElement;
+  const hint = document.getElementById("download-platform") as HTMLParagraphElement;
+
+  btn.href = `${BASE}/${file}`;
+  btn.removeAttribute("target");
+  lbl.textContent = label;
+  hint.textContent = `SHA-256 disponible en la página de releases`;
+</script>
