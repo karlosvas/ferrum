@@ -11,7 +11,7 @@ mod texture;
 use cgmath::{Deg, Matrix4, Point3, Quaternion, Vector3, ortho};
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
-use wgpu::{PolygonMode::Point, TextureView};
+use wgpu::TextureView;
 #[cfg(target_arch = "wasm32")]
 use winit::event_loop::EventLoopProxy;
 
@@ -108,16 +108,15 @@ impl State {
         let (device, queue): (Device, Queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: None,
-                required_features: if cfg!(target_arch = "wasm32") {
-                    wgpu::Features::all_webgpu_mask()
-                } else {
-                    wgpu::Features::empty()
-                },
-                required_limits: if cfg!(target_arch = "wasm32") {
-                    wgpu::Limits::downlevel_webgl2_defaults()
-                } else {
-                    adapter.limits()
-                },
+                // The engine uses no optional features. all_webgpu_mask() would demand
+                // every WebGPU feature as required — including texture-compression-astc,
+                // which desktop GPUs (e.g. AMD Vega) don't support, so requestDevice fails.
+                required_features: wgpu::Features::empty(),
+                // The engine requires WebGPU (compute shader for the HDR cubemap) and never
+                // runs on WebGL2, so use the adapter's real limits on every target.
+                // downlevel_webgl2_defaults() would cap compute limits at 0 and break the
+                // equirect→cubemap compute pass.
+                required_limits: adapter.limits(),
                 experimental_features: wgpu::ExperimentalFeatures::disabled(),
                 memory_hints: Default::default(),
                 trace: wgpu::Trace::Off,
@@ -255,26 +254,34 @@ impl State {
         .await
         .unwrap();
 
+        // Deth texture
         let depth_texture: texture::Texture =
             texture::Texture::create_depth_texture(&device, &config, "depth_texture");
 
-        // HDR
+        // Sky
         let hdr: HdrPipeline = hdr::HdrPipeline::new(&device, &config);
 
         let hdr_loader: hdr::HdrLoader = hdr::HdrLoader::new(&device);
+
+        // Web caps max_texture_dimension_2d at 8192 and wasm32 has a 4 GiB address
+        // space, so the 16K equirectangular (16384px, ~2 GiB decoded) cannot be
+        // loaded in the browser. Use a 4K version on web and keep 16K on native.
+        #[cfg(target_arch = "wasm32")]
+        let sky_file: &str = "exr/NightSkyHDRI014_4K_HDR.exr";
+        #[cfg(not(target_arch = "wasm32"))]
         let sky_file: &str = "exr/NightSkyHDRI014_16K_HDR.exr";
-        let sky_format: hdr::SkyFormat = if sky_file.ends_with(".exr") {
-            hdr::SkyFormat::Exr
-        } else {
-            hdr::SkyFormat::Hdr
-        };
+
         let sky_bytes: Vec<u8> = resources::load_binary(sky_file).await?;
 
         let sky_texture: CubeTexture = hdr_loader.from_equirectangular_bytes(
             &device,
             &queue,
             &sky_bytes,
-            sky_format,
+            if sky_file.ends_with(".exr") {
+                hdr::SkyFormat::Exr
+            } else {
+                hdr::SkyFormat::Hdr
+            },
             None,
             Some("sky_texture"),
         )?;
@@ -337,9 +344,9 @@ impl State {
             )
         };
 
-        // Light section
+        // Light
         let light_uniform: light::LightUniform = light::LightUniform {
-            position: [20.0, 0.0, 0.0],
+            position: [15.0, 0.0, 0.0],
             color: [7.0, 6.95, 6.85],
             light_view_proj: [
                 [1.0, 0.0, 0.0, 0.0],
@@ -381,41 +388,6 @@ impl State {
             }],
         });
 
-        let shadow_bind_group_layout: BindGroupLayout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("shadow_bind_group_layout"),
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Depth,
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            multisampled: false,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Comparison),
-                        count: None,
-                    },
-                ],
-            });
-
-        let pipeline_render_layout: PipelineLayout =
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                bind_group_layouts: &[
-                    &texture_bind_group_layout,
-                    &camera_bind_group_layout,
-                    &light_bind_group_layout,
-                    &shadow_bind_group_layout,
-                ],
-                label: Some("render_pipeline_layout"),
-                ..Default::default()
-            });
-
         let light_pipeline_layout: PipelineLayout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("light_pipeline_layout"),
@@ -440,12 +412,37 @@ impl State {
                 Some(texture::Texture::DEPTH_FORMAT),
                 &[ModelVertex::desc()],
                 normal_shader,
+                Some(wgpu::Face::Back),
+                wgpu::DepthBiasState::default(),
             )
         };
 
         // Shadow
         let shadow_texture: texture::Texture =
-            texture::Texture::create_shadow_map(&device, 2048, "depth_texture");
+            texture::Texture::create_shadow_map(&device, 2048, "shadow_texture");
+
+        let shadow_bind_group_layout: BindGroupLayout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("shadow_bind_group_layout"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Depth,
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Comparison),
+                        count: None,
+                    },
+                ],
+            });
 
         let shadow_bind_group: BindGroup = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("shadow_bind_group"),
@@ -482,10 +479,28 @@ impl State {
                 Some(texture::Texture::DEPTH_FORMAT),
                 &[ModelVertex::desc(), InstanceRaw::desc()],
                 normal_shader,
+                None, // no culling: geometry blocks light from both sides
+                wgpu::DepthBiasState {
+                    constant: 2,
+                    slope_scale: 4.0, // compensates for grazing-angle precision loss
+                    clamp: 0.0,
+                },
             )
         };
 
         // Render Pipeline
+        let pipeline_render_layout: PipelineLayout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                bind_group_layouts: &[
+                    &texture_bind_group_layout,
+                    &camera_bind_group_layout,
+                    &light_bind_group_layout,
+                    &shadow_bind_group_layout,
+                ],
+                label: Some("render_pipeline_layout"),
+                ..Default::default()
+            });
+
         let render_pipeline: RenderPipeline =
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some("render_pipeline"),
@@ -517,7 +532,6 @@ impl State {
                     mask: !0,
                     alpha_to_coverage_enabled: false,
                 },
-                // Fragment shader
                 fragment: Some(wgpu::FragmentState {
                     module: &shader,
                     entry_point: Some("fs_main"),
@@ -581,9 +595,6 @@ impl State {
     }
 
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
-        // TODO: delete after
-        self.window.request_redraw();
-
         if !self.is_surface_configuration {
             return Ok(());
         }
@@ -717,11 +728,18 @@ impl State {
         ) * old_position)
             .into();
 
-        let light_view: Matrix4<f32> = Matrix4::look_at_rh(
-            self.light_uniform.position.into(),
-            Point3::new(0.0, 0.0, 0.0),
-            Vector3::unit_y(),
-        );
+        let light_pos: cgmath::Point3<f32> = self.light_uniform.position.into();
+
+        // Avoid degenerate look_at when the light is nearly aligned with the Y axis.
+        let up: Vector3<f32> = if self.light_uniform.position[0].abs() < 0.01
+            && self.light_uniform.position[2].abs() < 0.01
+        {
+            Vector3::unit_z()
+        } else {
+            Vector3::unit_y()
+        };
+        let light_view: Matrix4<f32> =
+            Matrix4::look_at_rh(light_pos, Point3::new(0.0, 0.0, 0.0), up);
         let light_proj: Matrix4<f32> = ortho(-20.0, 20.0, -20.0, 20.0, 0.1, 100.0);
 
         let light_view_proj: Matrix4<f32> = light_proj * light_view;
@@ -861,16 +879,18 @@ impl ApplicationHandler<State> for App {
         }
         self.state = Some(event)
     }
+
+    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+        if let Some(state) = &self.state {
+            state.window.request_redraw();
+        }
+    }
 }
 
 pub fn run() -> anyhow::Result<()> {
     #[cfg(not(target_arch = "wasm32"))]
     {
-        env_logger::init();
-    }
-    #[cfg(target_arch = "wasm32")]
-    {
-        console_log::init_with_level(log::Level::Info).unwrap_throw();
+        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     }
 
     let event_loop: EventLoop<State> = EventLoop::<State>::with_user_event().build()?;
@@ -889,6 +909,16 @@ pub fn run() -> anyhow::Result<()> {
 #[wasm_bindgen(start)]
 pub fn run_web() -> Result<(), wasm_bindgen::JsValue> {
     console_error_panic_hook::set_once();
+
+    let level: log::Level = if cfg!(debug_assertions) {
+        log::Level::Debug
+    } else {
+        log::Level::Warn
+    };
+
+    console_log::init_with_level(level).unwrap_throw();
+    log::info!("Ferrum engine loaded successfully");
+
     run().unwrap_throw();
     Ok(())
 }
