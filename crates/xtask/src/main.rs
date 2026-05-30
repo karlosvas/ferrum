@@ -1,7 +1,11 @@
 use {
     anyhow::Result,
     colored::Colorize,
-    std::process::{Command, ExitStatus},
+    std::{
+        path::PathBuf,
+        process::{Command, ExitStatus},
+    },
+    which::which,
 };
 
 fn main() -> Result<()> {
@@ -20,14 +24,17 @@ fn main() -> Result<()> {
 }
 
 fn compile_web() -> Result<()> {
-    let status = Command::new("wasm-pack")
+    anyhow::ensure!(which("wasm-pack").is_ok(), "wasm-pack is not installed");
+
+    let out_dir: PathBuf = std::env::current_dir()?.join("www/public/pkg");
+    let status: ExitStatus = Command::new("wasm-pack")
         .args([
             "build",
             "crates/engine",
             "--target",
             "web",
             "--out-dir",
-            "./www/public/pkg",
+            out_dir.to_str().unwrap(),
         ])
         .status()?;
 
