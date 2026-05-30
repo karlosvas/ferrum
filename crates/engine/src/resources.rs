@@ -72,14 +72,26 @@ pub async fn load_string(file_name: &str) -> anyhow::Result<String> {
     #[cfg(target_arch = "wasm32")]
     let text = {
         let url = format_url(file_name);
-        reqwest::get(url).await?.text().await?
+        log::debug!("[load_string] GET {}", url);
+        let resp = reqwest::get(url.clone()).await.map_err(|e| {
+            log::error!("[load_string] fetch failed for '{}': {}", url, e);
+            e
+        })?;
+        if !resp.status().is_success() {
+            log::error!("[load_string] HTTP {} for '{}'", resp.status(), url);
+            anyhow::bail!("HTTP {} fetching '{}'", resp.status(), url);
+        }
+        resp.text().await?
     };
 
     #[cfg(not(target_arch = "wasm32"))]
     let text: String = {
-        let path: PathBuf = resolve_resource_path(file_name)?;
+        let path: PathBuf = resolve_resource_path(file_name).map_err(|e| {
+            log::error!("[load_string] resource not found '{}': {}", file_name, e);
+            e
+        })?;
 
-        log::debug!("Ansolute path resolved: {:?}", path);
+        log::debug!("[load_string] resolved '{}' -> {:?}", file_name, path);
         std::fs::read_to_string(path)?
     };
 
@@ -90,12 +102,24 @@ pub async fn load_binary(file_name: &str) -> anyhow::Result<Vec<u8>> {
     #[cfg(target_arch = "wasm32")]
     let data = {
         let url = format_url(file_name);
-        reqwest::get(url).await?.bytes().await?.to_vec()
+        log::debug!("[load_binary] GET {}", url);
+        let resp = reqwest::get(url.clone()).await.map_err(|e| {
+            log::error!("[load_binary] fetch failed for '{}': {}", url, e);
+            e
+        })?;
+        if !resp.status().is_success() {
+            log::error!("[load_binary] HTTP {} for '{}'", resp.status(), url);
+            anyhow::bail!("HTTP {} fetching '{}'", resp.status(), url);
+        }
+        resp.bytes().await?.to_vec()
     };
 
     #[cfg(not(target_arch = "wasm32"))]
     let data = {
-        let path: PathBuf = resolve_resource_path(file_name)?;
+        let path: PathBuf = resolve_resource_path(file_name).map_err(|e| {
+            log::error!("[load_binary] resource not found '{}': {}", file_name, e);
+            e
+        })?;
 
         std::fs::read(path)?
     };
