@@ -1,5 +1,5 @@
 use {
-    anyhow::Result,
+    anyhow::{Ok, Result},
     colored::Colorize,
     std::{
         path::PathBuf,
@@ -15,9 +15,11 @@ fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
     match args.get(1).map(|a| a.as_str()) {
         Some("web") => compile_web()?,
+        Some("deploy") => deploy_web()?,
         Some("rpi") => compile_rpi()?,
         Some("run") => run_app()?,
-        _ => anyhow::bail!("Uso cargo xtask <comando>"),
+        Some("demo") => setup_demo()?,
+        _ => anyhow::bail!("Use: cargo xtask <web,deploy,rpi,run,demo>"),
     }
 
     Ok(())
@@ -44,6 +46,21 @@ fn compile_web() -> Result<()> {
     Ok(())
 }
 
+fn deploy_web() -> Result<()> {
+    anyhow::ensure!(which("vercel").is_ok(), "vercel CLI is not installed");
+
+    compile_web()?;
+
+    let status: ExitStatus = Command::new("vercel")
+        .args(["deploy", "--prod", "--yes", "--archive=tgz"])
+        .status()?;
+
+    anyhow::ensure!(status.success(), "vercel deploy failed");
+    tracing::info!("{}", "✓ Deployed to Vercel".green());
+
+    Ok(())
+}
+
 fn setup_rpi() -> Result<()> {
     compile_rpi()?;
     connect_rpi()?;
@@ -52,8 +69,13 @@ fn setup_rpi() -> Result<()> {
 }
 
 fn connect_rpi() -> Result<()> {
-    let user: String = std::env::var("RPI_USER")?;
-    let host: String = std::env::var("RPI_HOST")?;
+    anyhow::ensure!(which("scp").is_ok(), "scp is not installed");
+    anyhow::ensure!(which("ssh").is_ok(), "ssh is not installed");
+
+    let user: String = std::env::var("RPI_USER")
+        .map_err(|_| anyhow::anyhow!("RPI_USER not set (define it in .env)"))?;
+    let host: String = std::env::var("RPI_HOST")
+        .map_err(|_| anyhow::anyhow!("RPI_HOST not set (define it in .env)"))?;
 
     let dest: String = format!("{}@{}:~/rpi", user, host);
 
@@ -76,7 +98,7 @@ fn connect_rpi() -> Result<()> {
 }
 
 fn run_app() -> Result<()> {
-    if let Err(e) = setup_rpi() {
+    if let Err(e) = setup_demo() {
         tracing::warn!("RPI setup skipped (opcional): {e}");
     }
 
@@ -85,6 +107,17 @@ fn run_app() -> Result<()> {
         .status()?;
 
     anyhow::ensure!(status.success(), "engine failed");
+
+    Ok(())
+}
+
+fn setup_demo() -> Result<()> {
+    // Initialize code in pi
+    setup_rpi()?;
+
+    let status: ExitStatus = Command::new("cargo").args(["run", "-p", "demo"]).status()?;
+
+    anyhow::ensure!(status.success(), "demo failed");
 
     Ok(())
 }
@@ -109,6 +142,11 @@ fn compile_rpi() -> Result<()> {
         anyhow::ensure!(status.success(), "wsl xtask rpi failed");
         return Ok(());
     }
+
+    anyhow::ensure!(
+        which("cross").is_ok(),
+        "cross is not installed: cargo install cross (requires Docker/Podman)"
+    );
 
     let status: ExitStatus = Command::new("cross")
         .args([
