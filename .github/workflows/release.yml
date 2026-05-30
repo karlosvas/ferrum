@@ -1,0 +1,118 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  audit:
+    name: Security audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo install cargo-audit --locked
+      - run: cargo audit
+
+  build:
+    name: Build · ${{ matrix.artifact }}
+    needs: audit
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: ferrum-windows-x86_64.exe
+            binary: target/release/engine.exe
+
+          - os: ubuntu-latest
+            artifact: ferrum-linux-x86_64
+            binary: target/release/engine
+
+          - os: macos-latest
+            artifact: ferrum-macos-aarch64
+            binary: target/release/engine
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Install Linux system dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            pkg-config \
+            libx11-dev libxrandr-dev libxi-dev \
+            libxcursor-dev libxinerama-dev \
+            libwayland-dev libxkbcommon-dev
+
+      - name: Build release binary
+        run: cargo build --release --bin engine
+
+      - name: Rename binary (Unix)
+        if: matrix.os != 'windows-latest'
+        run: cp ${{ matrix.binary }} ${{ matrix.artifact }}
+
+      - name: Rename binary (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: Copy-Item ${{ matrix.binary }} ${{ matrix.artifact }}
+
+      - name: Checksum SHA-256 (Unix)
+        if: matrix.os != 'windows-latest'
+        run: sha256sum ${{ matrix.artifact }} > ${{ matrix.artifact }}.sha256
+
+      - name: Checksum SHA-256 (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash "${{ matrix.artifact }}" -Algorithm SHA256).Hash.ToLower()
+          "$hash  ${{ matrix.artifact }}" | Out-File -Encoding ASCII "${{ matrix.artifact }}.sha256"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            ${{ matrix.artifact }}
+            ${{ matrix.artifact }}.sha256
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            ferrum-windows-x86_64.exe
+            ferrum-windows-x86_64.exe.sha256
+            ferrum-linux-x86_64
+            ferrum-linux-x86_64.sha256
+            ferrum-macos-aarch64
+            ferrum-macos-aarch64.sha256
