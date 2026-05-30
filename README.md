@@ -15,6 +15,7 @@
 
 <a href="#features">Features</a> •
 <a href="#live-demo">Live Demo</a> •
+<a href="#browser-requirements-webgpu">Browser Requirements</a> •
 <a href="#getting-started">Getting Started</a> •
 <a href="#architecture">Architecture</a> •
 <a href="#license">License</a>
@@ -37,7 +38,7 @@ Developed as a final degree project, it combines a PBR rendering pipeline with a
 - **Free camera** with WASD / arrow key controls
 - **Asynchronous resource loading** on both native and WASM targets
 - **Interactive demo** with Raspberry Pi and physical sensors
-- **Web visualization** via WebAssembly through WebGL
+- **Web visualization** via WebAssembly powered by WebGPU
 - **Stripe payment** integration for commercial licensing
 - **WebSockets** for real-time sensor data streaming
 
@@ -45,7 +46,9 @@ Developed as a final degree project, it combines a PBR rendering pipeline with a
 
 ## Live Demo
 
-Try the engine directly from your browser on the [demo page](https://ferrum.dev/demo). The engine compiles to WebAssembly and runs inside a `<canvas>` element via wgpu on WebGL — no installation required.
+Try the engine directly from your browser on the [demo page](https://ferrum.dev/demo). The engine compiles to WebAssembly and runs inside a `<canvas>` element via wgpu on **WebGPU** — no installation required.
+
+> ⚠️ **The demo requires a WebGPU-capable browser.** See [Browser Requirements](#browser-requirements-webgpu) below before reporting a blank canvas.
 
 ### Raspberry Pi Demo
 
@@ -59,6 +62,93 @@ The demo connects a **Raspberry Pi** with the following sensors to simulate how 
 | **Wide Angle 120º Camera** | CSI                | Detects light direction to orient the scene illumination                         |
 
 Sensor data is streamed to the rendering engine in real time via **WebSockets**, so real-world light and wind directly affect the plant in the 3D scene.
+
+---
+
+## Browser Requirements (WebGPU)
+
+> **The web demo requires WebGPU. It will _not_ run on WebGL2.**
+
+This is not optional. The skybox is built by converting an equirectangular HDR/EXR
+into a cubemap using a **compute shader** (`shaders/equirectangular.wgsl`). Compute
+shaders **do not exist in WebGL2**, so the engine genuinely needs the WebGPU backend.
+If the browser cannot provide a WebGPU adapter, `request_adapter()` returns `None`,
+`State::new` fails, and the canvas stays black.
+
+The demo page detects this in `Demo.astro` (it calls `navigator.gpu.requestAdapter()`
+before loading the WASM) and shows an on-screen warning instead of a blank canvas.
+
+### Supported browsers
+
+| Browser                   | WebGPU status                                                                       |
+| ------------------------- | ----------------------------------------------------------------------------------- |
+| **Chrome / Edge / Brave** | ✅ Enabled by default on Windows/macOS. **On Linux it must be enabled via a flag.** |
+| **Firefox**               | ⚠️ Behind a flag on Linux (`dom.webgpu.enabled`); most reliable on Nightly.         |
+| **Safari**                | ✅ WebGPU on recent versions (macOS / iOS 18+).                                     |
+
+### Enabling WebGPU on Linux (Chromium — Chrome/Brave/Edge)
+
+Chromium does **not** enable WebGPU by default on Linux, even when the system GPU and
+Vulkan work perfectly. Enable it:
+
+1. Open `chrome://flags` (Brave: `brave://flags`, Edge: `edge://flags`).
+2. Set **`#enable-unsafe-webgpu`** → **Enabled** (the important one).
+3. If present, set **`#enable-vulkan`** → **Enabled**.
+4. **Fully restart** the browser (close every window).
+
+Or launch from a terminal with the flags:
+
+```bash
+brave --enable-unsafe-webgpu --enable-features=Vulkan
+# or
+google-chrome-stable --enable-unsafe-webgpu --enable-features=Vulkan
+```
+
+On Wayland, if it still fails, force the backend:
+
+```bash
+brave --enable-unsafe-webgpu --enable-features=Vulkan --use-angle=vulkan --ozone-platform=x11
+```
+
+### Enabling WebGPU on Firefox (Linux)
+
+1. Open `about:config`.
+2. Set `dom.webgpu.enabled` → `true` (and `gfx.webgpu.force-enabled` → `true` if available).
+3. Restart Firefox. Consider **Firefox Nightly** for better Linux WebGPU support.
+
+### System prerequisites
+
+Browser WebGPU on Linux is implemented on top of **Vulkan**, so you need working
+Vulkan drivers:
+
+```bash
+vulkaninfo --summary   # must list your GPU
+```
+
+> The native build (`cargo run -p engine`) uses Vulkan directly, so if the desktop
+> app renders but the browser does not, the problem is browser-side WebGPU enablement,
+> **not** your drivers or the engine.
+
+### Verifying
+
+- Check your browser's GPU diagnostics page (e.g. `chrome://gpu` in Chromium-based
+  browsers, `about:support` in Firefox) and look for the **WebGPU** line — it should
+  report that it is hardware accelerated / enabled.
+- Or visit **[webgpureport.org](https://webgpureport.org)**: if it reports no adapter,
+  the issue is browser configuration, not Ferrum.
+
+### Quality on web vs. native
+
+The native build adapts to your hardware and renders at **full quality**. The web build
+is intentionally **scaled down** — textures, sky and other assets are swapped for
+lighter, lower-resolution versions (selected via `cfg(target_arch = "wasm32")`), so the
+demo looks noticeably less detailed in the browser than the desktop application. This
+trade-off keeps the experience within the limits any browser engine can render:
+
+- Browser WebGPU caps `max_texture_dimension_2d` at **8192**, so very large textures would
+  fail validation.
+- Full-resolution assets decode to several GiB, exceeding the **4 GiB** wasm32 address
+  space.
 
 ---
 
@@ -95,11 +185,11 @@ Every user can upload their own 3D plant model to track its evolution inside the
 
 ### Graphics Backends
 
-| Platform                | wgpu Backend                            |
-| ----------------------- | --------------------------------------- |
-| Windows / macOS / Linux | Vulkan, Metal, DX12                     |
-| Web (WASM)              | WebGL + WebGPU (on compatible browsers) |
-| Raspberry Pi            | OpenGL ES                               |
+| Platform                | wgpu Backend                                                                     |
+| ----------------------- | -------------------------------------------------------------------------------- |
+| Windows / macOS / Linux | Vulkan, Metal, DX12                                                              |
+| Web (WASM)              | **WebGPU (required)** — see [Browser Requirements](#browser-requirements-webgpu) |
+| Raspberry Pi            | OpenGL ES                                                                        |
 
 ---
 
