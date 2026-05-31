@@ -8,44 +8,47 @@ mod resources;
 mod structs;
 mod texture;
 
-use cgmath::{Deg, Matrix4, Point3, Quaternion, Vector3, ortho};
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen::prelude::*;
-use wgpu::TextureView;
-#[cfg(target_arch = "wasm32")]
-use winit::event_loop::EventLoopProxy;
-
 use crate::{
     hdr::HdrPipeline,
-    models::{DrawShadow, InstanceRaw, ModelVertex, Vertex},
+    models::{DrawShadow, InstanceRaw, Model, ModelVertex, Vertex},
     texture::CubeTexture,
 };
-use {
-    cgmath::Rotation3,
-    image::ImageBuffer,
-    std::sync::Arc,
+pub use {
+    cgmath::{Deg, Matrix4, Point3, Quaternion, Rotation3, Vector3, ortho},
+    models::{Instance, TypeModel},
+    std::{
+        collections::HashMap,
+        marker::PhantomData,
+        sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+            mpsc::{self, Sender},
+        },
+    },
     wgpu::{
-        Adapter, BindGroup, BindGroupLayout, Buffer, CommandEncoder, Device, Instance,
-        PipelineLayout, Queue, RenderPass, RenderPipeline, ShaderModule, ShaderModuleDescriptor,
-        Surface, SurfaceCapabilities, SurfaceTexture, TextureFormat, util::DeviceExt,
+        Adapter, BindGroup, BindGroupLayout, Buffer, CommandEncoder, Device, PipelineLayout, Queue,
+        RenderPass, RenderPipeline, ShaderModule, ShaderModuleDescriptor, Surface,
+        SurfaceCapabilities, SurfaceTexture, TextureFormat, TextureView, util::DeviceExt,
         wgt::SurfaceConfiguration,
     },
-    winit::{
-        application::ApplicationHandler,
-        dpi::PhysicalSize,
-        event::KeyEvent,
-        event::WindowEvent,
-        event_loop::{ActiveEventLoop, EventLoop},
-        keyboard::{KeyCode, PhysicalKey},
-        window::Window,
-        window::{WindowAttributes, WindowId},
-    },
+    winit::{dpi::PhysicalSize, event_loop::ActiveEventLoop, keyboard::KeyCode, window::Window},
 };
+
+pub struct Ingot<T> {
+    pub id: usize,
+    _marker: PhantomData<T>,
+}
+
+enum Bead<T> {
+    Burning,
+    Molten(T),
+    Ash,
+}
 
 pub struct State {
     pub window_surface: wgpu::Surface<'static>,
-    pub device: wgpu::Device,
-    pub queue: wgpu::Queue,
+    pub device: Arc<wgpu::Device>,
+    pub queue: Arc<wgpu::Queue>,
     pub config: wgpu::SurfaceConfiguration,
     pub is_surface_configuration: bool,
     pub render_pipeline: wgpu::RenderPipeline,
@@ -54,9 +57,15 @@ pub struct State {
     pub camera_buffer: wgpu::Buffer,
     pub camera_bind_group: wgpu::BindGroup,
     pub camera_controller: camera::CameraController,
-    pub obj_model: models::Model,
-    pub obj_model_2: models::Model,
-    pub obj_light: models::Model,
+
+    // Models
+    static_models: HashMap<usize, Bead<Model>>,
+    light_models: HashMap<usize, Bead<Model>>,
+    actual_ingot: AtomicUsize,
+    model_sender: mpsc::Sender<(usize, Model)>,
+    model_receiver: mpsc::Receiver<(usize, Model)>,
+    pub texture_bind_group_layout: Arc<wgpu::BindGroupLayout>,
+
     pub last_render_time: web_time::Instant,
     pub depth_texture: texture::Texture,
 
@@ -83,7 +92,7 @@ impl State {
     pub async fn new(window: Arc<Window>) -> anyhow::Result<Self> {
         let window_size: PhysicalSize<u32> = window.inner_size();
 
-        let backend_instance: Instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+        let backend_instance: wgpu::Instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
             #[cfg(target_arch = "wasm32")]
             backends: wgpu::Backends::GL | wgpu::Backends::BROWSER_WEBGPU,
             #[cfg(all(not(target_arch = "wasm32"), not(feature = "rpi")))]
@@ -105,7 +114,7 @@ impl State {
             .await?;
 
         // Logic interface for creating resources and a command queue that is sent to the GPU
-        let (device, queue): (Device, Queue) = adapter
+        let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: None,
                 // The engine uses no optional features. all_webgpu_mask() would demand
@@ -122,6 +131,8 @@ impl State {
                 trace: wgpu::Trace::Off,
             })
             .await?;
+        let device = Arc::new(device);
+        let queue = Arc::new(queue);
 
         // A dynamic query of the capabilities that varies according to the adapter you have
         let surface_caps: SurfaceCapabilities = window_surface.get_capabilities(&adapter);
@@ -146,7 +157,7 @@ impl State {
             view_formats: vec![surface_format.add_srgb_suffix()],
         };
 
-        let texture_bind_group_layout: BindGroupLayout =
+        let texture_bind_group_layout: Arc<BindGroupLayout> = Arc::new(
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 label: Some("texture_bind_group_layout"),
                 entries: &[
@@ -185,7 +196,8 @@ impl State {
                         count: None,
                     },
                 ],
-            });
+            }),
+        );
 
         let shader: ShaderModule =
             device.create_shader_module(wgpu::include_wgsl!("shaders/shaders.wgsl"));
@@ -218,41 +230,6 @@ impl State {
 
         let (camera_bind_group, camera_buffer, camera_controller, camera_uniform) =
             camera::Camera::build_camera_setup(&camera, &device, &camera_bind_group_layout);
-
-        // Load the 3D model (.obj inside the /res folder)
-        let obj_model: models::Model = resources::load_model(
-            "plant/plant.obj",
-            &device,
-            &queue,
-            &texture_bind_group_layout,
-            vec![models::Instance::new(
-                Vector3::new(0.0, 1.5, 0.0),
-                Quaternion::from_angle_y(Deg(0.0)),
-                Vector3::new(1.0, 1.0, 1.0),
-            )],
-        )
-        .await
-        .expect("Error cargando plant/plant.obj");
-
-        let obj_model_2: models::Model = resources::load_model(
-            "floor/floor.obj",
-            &device,
-            &queue,
-            &texture_bind_group_layout,
-            vec![models::Instance::default()],
-        )
-        .await
-        .expect("Error cargando plant/plant.obj");
-
-        let obj_light: models::Model = resources::load_model(
-            "sun/venus.obj",
-            &device,
-            &queue,
-            &texture_bind_group_layout,
-            vec![models::Instance::default()],
-        )
-        .await
-        .unwrap();
 
         // Deth texture
         let depth_texture: texture::Texture =
@@ -546,6 +523,8 @@ impl State {
                 multiview_mask: None,
             });
 
+        let (model_sender, model_receiver) = mpsc::channel::<(usize, Model)>();
+
         Ok(Self {
             window_surface,
             device,
@@ -558,10 +537,13 @@ impl State {
             camera_buffer,
             camera_bind_group,
             camera_controller,
-            obj_model,
-            obj_model_2,
-            obj_light,
+            static_models: HashMap::new(),
+            light_models: HashMap::new(),
+            actual_ingot: AtomicUsize::new(0),
+            model_sender,
+            model_receiver,
             last_render_time: web_time::Instant::now(),
+            texture_bind_group_layout,
             depth_texture,
             shadow_texture,
             shadow_bind_group,
@@ -625,8 +607,11 @@ impl State {
 
             shadow_render_pass.set_pipeline(&self.shadow_render_pipeline);
             shadow_render_pass.set_bind_group(0, &self.light_bind_group, &[]);
-            shadow_render_pass.draw_shadow_model(&self.obj_model, &self.light_bind_group);
-            shadow_render_pass.draw_shadow_model(&self.obj_model_2, &self.light_bind_group);
+            for bead in self.static_models.values() {
+                if let Bead::Molten(model) = bead {
+                    shadow_render_pass.draw_shadow_model(model, &self.light_bind_group);
+                }
+            }
         }
         {
             let mut render_pass: RenderPass =
@@ -656,26 +641,28 @@ impl State {
 
             use models::DrawLight;
             render_pass.set_pipeline(&self.light_render_pipeline);
-            render_pass.draw_light_model(
-                &self.obj_light,
-                &self.camera_bind_group,
-                &self.light_bind_group,
-            );
+            for bead in self.light_models.values() {
+                if let Bead::Molten(model) = bead {
+                    render_pass.draw_light_model(
+                        model,
+                        &self.camera_bind_group,
+                        &self.light_bind_group,
+                    );
+                }
+            }
 
             use models::DrawModel;
             render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.draw_model(
-                &self.obj_model,
-                &self.camera_bind_group,
-                &self.light_bind_group,
-                &self.shadow_bind_group,
-            );
-            render_pass.draw_model(
-                &self.obj_model_2,
-                &self.camera_bind_group,
-                &self.light_bind_group,
-                &self.shadow_bind_group,
-            );
+            for bead in self.static_models.values() {
+                if let Bead::Molten(model) = bead {
+                    render_pass.draw_model(
+                        model,
+                        &self.camera_bind_group,
+                        &self.light_bind_group,
+                        &self.shadow_bind_group,
+                    );
+                }
+            }
 
             // Sky pipeline last: leverages the depth test (LessEqual with z=1.0)
             // to paint only the pixels where no geometry was drawn.
@@ -699,6 +686,40 @@ impl State {
         Ok(())
     }
 
+    pub fn spawn_model(
+        &mut self,
+        path: &str,
+        instances: Vec<models::Instance>,
+        kind: TypeModel,
+    ) -> Ingot<models::Model> {
+        let id: usize = self.actual_ingot.fetch_add(1, Ordering::SeqCst);
+
+        match kind {
+            TypeModel::StaticObj => self.static_models.insert(id, Bead::Burning),
+            TypeModel::PointOfLight => self.light_models.insert(id, Bead::Burning),
+        };
+
+        let device: Arc<Device> = Arc::clone(&self.device);
+        let queue: Arc<Queue> = Arc::clone(&self.queue);
+        let layout: Arc<BindGroupLayout> = Arc::clone(&self.texture_bind_group_layout);
+        let sender: Sender<(usize, Model)> = self.model_sender.clone();
+        let path: String = path.to_string();
+
+        std::thread::spawn(move || {
+            let result: Result<Model, anyhow::Error> = pollster::block_on(resources::load_model(
+                &path, &device, &queue, &layout, instances, kind,
+            ));
+            if let Ok(model) = result {
+                let _ = sender.send((id, model));
+            }
+        });
+
+        Ingot {
+            id,
+            _marker: PhantomData,
+        }
+    }
+
     pub fn handle_key(&mut self, event_loop: &ActiveEventLoop, key: KeyCode, is_pressed: bool) {
         if key == KeyCode::Escape && is_pressed {
             #[cfg(not(target_arch = "wasm32"))]
@@ -708,7 +729,14 @@ impl State {
         }
     }
 
-    pub fn update(&mut self) {
+    pub fn evolbe(&mut self) {
+        while let Ok((id, model)) = self.model_receiver.try_recv() {
+            match model.type_model {
+                TypeModel::StaticObj => self.static_models.insert(id, Bead::Molten(model)),
+                TypeModel::PointOfLight => self.light_models.insert(id, Bead::Molten(model)),
+            };
+        }
+
         let now: web_time::Instant = web_time::Instant::now();
         let dt: web_time::Duration = now - self.last_render_time;
         self.last_render_time = now;
@@ -751,174 +779,4 @@ impl State {
             bytemuck::cast_slice(&[self.light_uniform]),
         );
     }
-}
-
-pub struct App {
-    pub state: Option<State>,
-    #[cfg(target_arch = "wasm32")]
-    pub proxy: Option<EventLoopProxy<State>>,
-}
-
-impl App {
-    pub fn new(#[cfg(target_arch = "wasm32")] proxy: EventLoopProxy<State>) -> Self {
-        Self {
-            state: None,
-            #[cfg(target_arch = "wasm32")]
-            proxy: Some(proxy),
-        }
-    }
-}
-
-impl ApplicationHandler<State> for App {
-    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        use winit::window::Icon;
-        let icon: Icon = {
-            let bytes: &[u8] = include_bytes!("../assets/logo.ico");
-            let img: ImageBuffer<image::Rgba<u8>, Vec<u8>> =
-                image::load_from_memory(bytes).unwrap().to_rgba8();
-            let (w, h): (u32, u32) = img.dimensions();
-            Icon::from_rgba(img.into_raw(), w, h)
-        }
-        .unwrap();
-
-        #[allow(unused_mut)]
-        let mut window_attributes: WindowAttributes =
-            Window::default_attributes().with_title("Ferrum");
-
-        #[cfg(target_arch = "wasm32")]
-        {
-            window_attributes = window_attributes.with_window_icon(Some(icon.clone()));
-        }
-
-        #[cfg(target_arch = "wasm32")]
-        {
-            use wasm_bindgen::JsCast;
-            use winit::{platform::web::WindowAttributesExtWebSys, window};
-
-            const CANVAS_ID: &str = "canvas";
-            let window = wgpu::web_sys::window().unwrap_throw();
-            let document = window.document().unwrap_throw();
-
-            let canvas = document.get_element_by_id(CANVAS_ID).unwrap_throw();
-            let html_canvas = canvas.unchecked_into();
-            window_attributes = window_attributes.with_canvas(Some(html_canvas));
-        }
-
-        let window: Arc<Window> = Arc::new(event_loop.create_window(window_attributes).unwrap());
-
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            self.state = Some(pollster::block_on(State::new(window)).unwrap());
-        }
-
-        #[cfg(target_arch = "wasm32")]
-        {
-            if let Some(proxy) = self.proxy.take() {
-                wasm_bindgen_futures::spawn_local(async move {
-                    assert!(
-                        proxy
-                            .send_event(
-                                State::new(window)
-                                    .await
-                                    .expect("Unable te creeate canvas!!")
-                            )
-                            .is_ok()
-                    )
-                })
-            }
-        }
-    }
-
-    fn window_event(
-        &mut self,
-        event_loop: &ActiveEventLoop,
-        _window_id: WindowId,
-        event: WindowEvent,
-    ) {
-        let state: &mut State = match &mut self.state {
-            Some(s) => s,
-            None => return,
-        };
-
-        match event {
-            WindowEvent::CloseRequested => event_loop.exit(),
-            WindowEvent::RedrawRequested => {
-                state.update();
-                match state.render() {
-                    Ok(_) => {}
-                    Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
-                        let size: PhysicalSize<u32> = state.window.inner_size();
-                        state.resize(size.height, size.width);
-                    }
-                    Err(e) => log::error!("No se ha podido renderizar {}", e),
-                }
-            }
-            WindowEvent::Resized(size) => state.resize(size.height, size.width),
-            WindowEvent::KeyboardInput {
-                event:
-                    KeyEvent {
-                        physical_key: PhysicalKey::Code(code),
-                        state: key_state,
-                        ..
-                    },
-                ..
-            } => state.handle_key(event_loop, code, key_state.is_pressed()),
-            _ => {}
-        }
-    }
-
-    #[allow(unused_mut)]
-    fn user_event(&mut self, _event_loop: &ActiveEventLoop, mut event: State) {
-        #[cfg(target_arch = "wasm32")]
-        {
-            event.window.request_redraw();
-            event.resize(
-                event.window.inner_size().height,
-                event.window.inner_size().width,
-            );
-        }
-        self.state = Some(event)
-    }
-
-    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
-        if let Some(state) = &self.state {
-            state.window.request_redraw();
-        }
-    }
-}
-
-pub fn run() -> anyhow::Result<()> {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
-    }
-
-    let event_loop: EventLoop<State> = EventLoop::<State>::with_user_event().build()?;
-    let mut app: App = App::new(
-        #[cfg(target_arch = "wasm32")]
-        {
-            event_loop.create_proxy()
-        },
-    );
-    event_loop.run_app(&mut app)?;
-
-    Ok(())
-}
-
-#[cfg(target_arch = "wasm32")]
-#[wasm_bindgen(start)]
-pub fn run_web() -> Result<(), wasm_bindgen::JsValue> {
-    console_error_panic_hook::set_once();
-
-    let level: log::Level = if cfg!(debug_assertions) {
-        log::Level::Debug
-    } else {
-        log::Level::Warn
-    };
-
-    console_log::init_with_level(level).unwrap_throw();
-    log::info!("Ferrum engine loaded successfully");
-
-    run().unwrap_throw();
-    Ok(())
 }

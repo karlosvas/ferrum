@@ -3,7 +3,11 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::{material, models, structs, texture};
+use crate::{
+    material,
+    models::{self, TypeModel},
+    structs, texture,
+};
 use cgmath::{Vector2, Vector3};
 use wgpu::{BindGroup, Buffer, util::DeviceExt};
 
@@ -143,6 +147,7 @@ pub async fn load_model(
     queue: &wgpu::Queue,
     layout: &wgpu::BindGroupLayout,
     instances: Vec<models::Instance>,
+    type_model: TypeModel,
 ) -> anyhow::Result<models::Model> {
     let obj_text: String = load_string(file_name).await?;
     let obj_cursor: Cursor<String> = Cursor::new(obj_text);
@@ -412,5 +417,6 @@ pub async fn load_model(
         materials,
         instances,
         instance_buffer,
+        type_model,
     })
 }

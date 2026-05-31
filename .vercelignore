@@ -1,6 +1,6 @@
 target/
 node_modules/
-crates/engine/res/
+crates/ferrum/res/
 *.log
 .env
 .env*

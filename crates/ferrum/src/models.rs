@@ -280,4 +280,11 @@ pub struct Model {
     pub materials: Vec<material::Material>,
     pub instances: Vec<Instance>,
     pub instance_buffer: wgpu::Buffer,
+    pub type_model: TypeModel,
+}
+
+#[derive(Clone)]
+pub enum TypeModel {
+    StaticObj,
+    PointOfLight,
 }

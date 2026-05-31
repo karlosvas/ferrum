@@ -255,7 +255,7 @@ ferrum/
 ├── .env.example                   # Raspberry Pi configuration
 │
 ├── crates/
-│   ├── engine/                    # 3D rendering engine
+│   ├── ferrum/                    # 3D rendering engine
 │   │   ├── Cargo.toml             # wgpu, winit, cgmath, tobj, image, bytemuck
 │   │   ├── build.rs               # Copies resources to build directory
 │   │   ├── assets/                # logo.png, logo.ico

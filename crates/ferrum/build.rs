@@ -22,7 +22,7 @@ fn main() -> Result<()> {
 
         let mut copy_options: CopyOptions = CopyOptions::new();
         copy_options.overwrite = true;
-        let paths_to_copy = vec![root.join("crates/engine/res")];
+        let paths_to_copy = vec![root.join("crates/ferrum/res")];
         let paths_to_copy: Vec<&std::path::Path> =
             paths_to_copy.iter().map(|p| p.as_path()).collect();
         copy_items(&paths_to_copy, &out_dir, &copy_options)?;
@@ -32,7 +32,7 @@ fn main() -> Result<()> {
             {
                 use winres::WindowsResource;
                 let mut res: WindowsResource = winres::WindowsResource::new();
-                res.set_icon(root.join("crates/engine/assets/logo.ico").to_str().unwrap());
+                res.set_icon(root.join("crates/ferrum/assets/logo.ico").to_str().unwrap());
                 res.compile()?;
             }
         }

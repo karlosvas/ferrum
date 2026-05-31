@@ -8,13 +8,44 @@ use {
         response::IntoResponse,
         routing::get,
     },
+    demo::App,
+    ferrum::{Deg, Instance, Quaternion, Rotation3, TypeModel, Vector3},
     shared::structs::RpiDemo,
     std::{result::Result::Ok, time::Duration},
     tokio::{net::TcpListener, time::Interval},
 };
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
+fn main() -> anyhow::Result<()> {
+    App::new().ferrum_setup(setup).ferrum_update(update).run()
+}
+
+fn update(state: &mut ferrum::State) {}
+
+fn setup(state: &mut ferrum::State) {
+    state.spawn_model(
+        "plant/plant.obj",
+        vec![Instance::new(
+            Vector3::new(0.0, 0.0, 0.0),
+            Quaternion::from_angle_y(Deg(0.0)),
+            Vector3::new(1.0, 1.0, 1.0),
+        )],
+        TypeModel::StaticObj,
+    );
+
+    state.spawn_model(
+        "floor/floor.obj",
+        vec![Instance::default()],
+        TypeModel::StaticObj,
+    );
+
+    state.spawn_model(
+        "sun/venus.obj",
+        vec![Instance::default()],
+        TypeModel::PointOfLight,
+    );
+}
+
+async fn up_websokets() -> Result<(), anyhow::Error> {
     let app: Router = Router::new().route("/demo", get(websocket_handler));
 
     let listener: TcpListener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;

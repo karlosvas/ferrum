@@ -608,8 +608,17 @@ dependencies = [
  "anyhow",
  "axum",
  "bincode",
+ "cgmath",
+ "env_logger",
+ "ferrum",
+ "image",
+ "log",
+ "pollster",
  "shared",
  "tokio",
+ "web-time",
+ "wgpu",
+ "winit",
 ]
 
 [[package]]
@@ -713,33 +722,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "engine"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bytemuck",
- "cgmath",
- "console_error_panic_hook",
- "console_log",
- "env_logger",
- "fs_extra",
- "glob",
- "image",
- "log",
- "pollster",
- "reqwest",
- "tobj",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "web-sys",
- "web-time",
- "wgpu",
- "windows-core 0.61.2",
- "winit",
- "winres",
-]
-
-[[package]]
 name = "env_logger"
 version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -790,6 +772,33 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e6853b52649d4ac5c0bd02320cddc5ba956bdb407c4b75a2c6b75bf51500f8c"
 dependencies = [
  "simd-adler32",
+]
+
+[[package]]
+name = "ferrum"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bytemuck",
+ "cgmath",
+ "console_error_panic_hook",
+ "console_log",
+ "env_logger",
+ "fs_extra",
+ "glob",
+ "image",
+ "log",
+ "pollster",
+ "reqwest",
+ "tobj",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+ "web-time",
+ "wgpu",
+ "windows-core 0.61.2",
+ "winit",
+ "winres",
 ]
 
 [[package]]

@@ -3,7 +3,7 @@ use {
     colored::Colorize,
     std::{
         path::PathBuf,
-        process::{Child, Command, ExitStatus},
+        process::{Command, ExitStatus},
     },
     which::which,
 };
@@ -17,7 +17,6 @@ fn main() -> Result<()> {
         Some("web") => compile_web()?,
         Some("deploy") => deploy_web()?,
         Some("rpi") => compile_rpi()?,
-        Some("run") => run_app()?,
         Some("demo") => setup_demo()?,
         _ => anyhow::bail!("Use: cargo xtask <web,deploy,rpi,run,demo>"),
     }
@@ -32,7 +31,7 @@ fn compile_web() -> Result<()> {
     let status: ExitStatus = Command::new("wasm-pack")
         .args([
             "build",
-            "crates/engine",
+            "crates/demo",
             "--target",
             "web",
             "--out-dir",
@@ -92,32 +91,17 @@ fn connect_rpi() -> Result<()> {
     Ok(())
 }
 
-fn run_app() -> Result<()> {
-    if let Err(e) = setup_demo() {
-        tracing::warn!("RPI setup skipped (opcional): {e}");
-    }
-
-    let status: ExitStatus = Command::new("cargo")
-        .args(["run", "-p", "engine"])
-        .status()?;
-
-    anyhow::ensure!(status.success(), "engine failed");
-
-    Ok(())
-}
-
 fn setup_demo() -> Result<()> {
     compile_rpi()?;
 
-    let mut server: Child = Command::new("cargo").args(["run", "-p", "demo"]).spawn()?;
+    std::thread::spawn(|| {
+        let _ = connect_rpi();
+    });
 
-    let result: Result<()> = connect_rpi();
+    let status: ExitStatus = Command::new("cargo").args(["run", "-p", "demo"]).status()?;
+    anyhow::ensure!(status.success(), "Program demo failed");
 
-    // When the Pi client exits (or on error), shut the server down.
-    server.kill().ok();
-    server.wait().ok();
-
-    result
+    Ok(())
 }
 
 fn compile_rpi() -> Result<()> {
