@@ -5,4 +5,11 @@ edition.workspace = true
 
 [dependencies]
 linux-embedded-hal = "0.4"
-tsl2591-rs = "0.1"
+shared = { path = "../shared" }
+tokio-tungstenite = "0.29.0"
+tokio = {version= "1.52.3", features = ["full"]}
+thiserror = "2.0.18"
+futures-util = "0.3"
+bincode = { version = "2", features = ["serde"] }
+tsl2591-rs = {version = "0.1.4", features = ["serde"]}
+dotenvy = "0.15.7"

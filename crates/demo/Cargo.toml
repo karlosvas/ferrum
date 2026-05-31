@@ -5,5 +5,7 @@ edition.workspace = true
 
 [dependencies]
 anyhow = "1.0.102"
-axum = {version = "0.8.4", features=["ws"]}
+axum = {version = "0.8.4", features=["ws", "macros"]}
 tokio = {version= "1.52.3", features = ["full"]}
+shared = { path = "../shared" }
+bincode = { version = "2", features = ["serde"] }

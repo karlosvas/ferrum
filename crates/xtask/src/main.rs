@@ -3,7 +3,7 @@ use {
     colored::Colorize,
     std::{
         path::PathBuf,
-        process::{Command, ExitStatus},
+        process::{Child, Command, ExitStatus},
     },
     which::which,
 };
@@ -61,13 +61,6 @@ fn deploy_web() -> Result<()> {
     Ok(())
 }
 
-fn setup_rpi() -> Result<()> {
-    compile_rpi()?;
-    connect_rpi()?;
-
-    Ok(())
-}
-
 fn connect_rpi() -> Result<()> {
     anyhow::ensure!(which("scp").is_ok(), "scp is not installed");
     anyhow::ensure!(which("ssh").is_ok(), "ssh is not installed");
@@ -75,6 +68,8 @@ fn connect_rpi() -> Result<()> {
     let user: String = std::env::var("RPI_USER")
         .map_err(|_| anyhow::anyhow!("RPI_USER not set (define it in .env)"))?;
     let host: String = std::env::var("RPI_HOST")
+        .map_err(|_| anyhow::anyhow!("RPI_HOST not set (define it in .env)"))?;
+    let ip_host: String = std::env::var("IP_HOST")
         .map_err(|_| anyhow::anyhow!("RPI_HOST not set (define it in .env)"))?;
 
     let dest: String = format!("{}@{}:~/rpi", user, host);
@@ -86,7 +81,7 @@ fn connect_rpi() -> Result<()> {
     anyhow::ensure!(status.success(), "scp deploy failed");
     tracing::info!("{}", "✓ Deployed to Raspberry Pi".green());
 
-    let remote_cmd: String = "chmod +x ~/rpi && ~/rpi &".to_string();
+    let remote_cmd: String = format!("chmod +x ~/rpi && IP_HOST={} ~/rpi &", ip_host);
     let status: ExitStatus = Command::new("ssh")
         .args([format!("{}@{}", user, host), remote_cmd])
         .status()?;
@@ -112,17 +107,25 @@ fn run_app() -> Result<()> {
 }
 
 fn setup_demo() -> Result<()> {
-    // Initialize code in pi
-    setup_rpi()?;
+    compile_rpi()?;
 
-    let status: ExitStatus = Command::new("cargo").args(["run", "-p", "demo"]).status()?;
+    let mut server: Child = Command::new("cargo").args(["run", "-p", "demo"]).spawn()?;
 
-    anyhow::ensure!(status.success(), "demo failed");
+    let result: Result<()> = connect_rpi();
 
-    Ok(())
+    // When the Pi client exits (or on error), shut the server down.
+    server.kill().ok();
+    server.wait().ok();
+
+    result
 }
 
 fn compile_rpi() -> Result<()> {
+    anyhow::ensure!(
+        which("cross").is_ok(),
+        "cross is not installed: cargo install cross (requires Docker/Podman)"
+    );
+
     if cfg!(target_os = "windows") {
         let wsl_user: String = std::env::var("WSL_USER")?;
         let cargo_path: String = format!("/home/{}/.cargo/bin/cargo", wsl_user);
@@ -142,11 +145,6 @@ fn compile_rpi() -> Result<()> {
         anyhow::ensure!(status.success(), "wsl xtask rpi failed");
         return Ok(());
     }
-
-    anyhow::ensure!(
-        which("cross").is_ok(),
-        "cross is not installed: cargo install cross (requires Docker/Podman)"
-    );
 
     let status: ExitStatus = Command::new("cross")
         .args([

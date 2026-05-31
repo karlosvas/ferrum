@@ -8,64 +8,63 @@ use {
         response::IntoResponse,
         routing::get,
     },
-    std::result::Result::Ok,
-    tokio::net::TcpListener,
+    shared::structs::RpiDemo,
+    std::{result::Result::Ok, time::Duration},
+    tokio::{net::TcpListener, time::Interval},
 };
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let app: Router = Router::new().route("/demo", get(websocket_handler));
 
-    let listener: TcpListener = tokio::net::TcpListener::bind("127.0.0.1:3000").await?;
+    let listener: TcpListener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;
+    println!("Listening on 0.0.0.0:3000/demo");
 
     axum::serve(listener, app).await?;
 
     Ok(())
 }
 
+#[axum::debug_handler]
 async fn websocket_handler(ws: WebSocketUpgrade) -> impl IntoResponse {
     ws.on_failed_upgrade(|error| println!("Error upgrading websocket: {}", error))
         .on_upgrade(handle_socket)
 }
 
 async fn handle_socket(mut socket: WebSocket) {
-    while let Some(msg) = socket.recv().await {
-        if let Ok(msg) = msg {
-            match msg {
-                Message::Text(utf8_bytes) => {
-                    println!("Text received: {}", utf8_bytes);
-                    let result = socket
-                        .send(Message::Text(
-                            format!("Echo back text: {}", utf8_bytes).into(),
-                        ))
-                        .await;
-                    if let Err(error) = result {
-                        println!("Error sending: {}", error);
-                        send_close_message(socket, 1011, &format!("Error occured: {}", error))
-                            .await;
-                        break;
+    let mut interval: Interval = tokio::time::interval(Duration::from_secs(30));
+
+    loop {
+        tokio::select! {
+            msg = socket.recv() => {
+                match msg {
+                    Some(Ok(Message::Binary(bytes))) => {
+                        let (data_received, _): (RpiDemo, _) = match bincode::serde::decode_from_slice(&bytes, bincode::config::standard()) {
+                            Ok(data) => data,
+                            Err(e) => {
+                                send_close_message(socket, 1011, &format!("Deserialize error: {}", e)).await;
+                                return;
+                            }
+                        };
+                        println!("{:?}", data_received);
                     }
-                }
-                Message::Binary(bytes) => {
-                    println!("Received bytes of length: {}", bytes.len());
-                    let result = socket
-                        .send(Message::Text(
-                            format!("Received bytes of length: {}", bytes.len()).into(),
-                        ))
-                        .await;
-                    if let Err(error) = result {
-                        println!("Error sending: {}", error);
-                        send_close_message(socket, 1011, &format!("Error occured: {}", error))
-                            .await;
-                        break;
+                    Some(Ok(Message::Close(reason))) => {
+                        println!("Client closed: {:?}", reason);
+                        return;
                     }
+                    Some(Err(e)) => {
+                        send_close_message(socket, 1011, &format!("Error: {}", e)).await;
+                        return;
+                    }
+                    None => return,
+                    Some(Ok(_)) => {}
                 }
-                _ => {}
             }
-        } else {
-            let error = msg.err().unwrap();
-            send_close_message(socket, 1011, &format!("Error ocured {}", error)).await;
-            break;
+            _ = interval.tick() => {
+                if socket.send(Message::Ping(vec![].into())).await.is_err() {
+                    return;
+                }
+            }
         }
     }
 }
