@@ -2,14 +2,18 @@ mod camera;
 mod hdr;
 mod light;
 mod material;
+mod math;
 mod models;
 mod pipeline;
 mod resources;
 mod structs;
 mod texture;
 
+use cgmath::EuclideanSpace;
+
 use crate::{
     hdr::HdrPipeline,
+    math::TransformDelta,
     models::{DrawShadow, InstanceRaw, Model, ModelVertex, Vertex},
     texture::CubeTexture,
 };
@@ -37,6 +41,16 @@ pub use {
 pub struct Ingot<T> {
     pub id: usize,
     _marker: PhantomData<T>,
+}
+
+pub trait IngotTrait {
+    fn id(&self) -> usize;
+}
+
+impl<T> IngotTrait for Ingot<T> {
+    fn id(&self) -> usize {
+        self.id
+    }
 }
 
 enum Bead<T> {
@@ -686,15 +700,10 @@ impl State {
         Ok(())
     }
 
-    pub fn spawn_model(
-        &mut self,
-        path: &str,
-        instances: Vec<models::Instance>,
-        kind: TypeModel,
-    ) -> Ingot<models::Model> {
+    pub fn spawn_model(&mut self, model_desc: models::ModelDesc) -> Ingot<models::Model> {
         let id: usize = self.actual_ingot.fetch_add(1, Ordering::SeqCst);
 
-        match kind {
+        match model_desc.kind {
             TypeModel::StaticObj => self.static_models.insert(id, Bead::Burning),
             TypeModel::PointOfLight => self.light_models.insert(id, Bead::Burning),
         };
@@ -703,11 +712,16 @@ impl State {
         let queue: Arc<Queue> = Arc::clone(&self.queue);
         let layout: Arc<BindGroupLayout> = Arc::clone(&self.texture_bind_group_layout);
         let sender: Sender<(usize, Model)> = self.model_sender.clone();
-        let path: String = path.to_string();
+        let path: String = model_desc.path.to_string();
 
         std::thread::spawn(move || {
             let result: Result<Model, anyhow::Error> = pollster::block_on(resources::load_model(
-                &path, &device, &queue, &layout, instances, kind,
+                &path,
+                &device,
+                &queue,
+                &layout,
+                model_desc.instances,
+                model_desc.kind,
             ));
             if let Ok(model) = result {
                 let _ = sender.send((id, model));
@@ -717,6 +731,44 @@ impl State {
         Ingot {
             id,
             _marker: PhantomData,
+        }
+    }
+
+    pub fn move_flare_light(&mut self, light_id: &usize, transform: TransformDelta) {
+        // Aqui me quedo pillado porque claro el modelo que le paso
+        // no tiene el id para buscarlo en el map
+        if let Some(l) = &mut self.light_models.get_mut(light_id) {
+            // Ya se que no hay que poner este codigo pero es psheudocodigo osea aqui deveria
+            // utilizar self para mover de forma parecida a como haceia en evolbe la luz.
+            // ademas estaria bien tener una funcion en vez de repetir cosas
+
+            let old_position: cgmath::Vector3<f32> = self.light_uniform.position.into();
+            let new_pos: Vector3<f32> = old_position + transform.translation;
+            self.light_uniform.position = [new_pos.x, new_pos.y, new_pos.z];
+
+            let light_pos: cgmath::Point3<f32> = self.light_uniform.position.into();
+
+            let up: Vector3<f32> = if self.light_uniform.position[0].abs() < 0.01
+                && self.light_uniform.position[2].abs() < 0.01
+            {
+                Vector3::unit_z()
+            } else {
+                Vector3::unit_y()
+            };
+            let light_view: Matrix4<f32> =
+                Matrix4::look_at_rh(light_pos, Point3::new(0.0, 0.0, 0.0), up);
+            let light_proj: Matrix4<f32> = ortho(-20.0, 20.0, -20.0, 20.0, 0.1, 100.0);
+
+            let light_view_proj: Matrix4<f32> = light_proj * light_view;
+            self.light_uniform.light_view_proj = cgmath::Matrix4::into(light_view_proj);
+
+            self.queue.write_buffer(
+                &self.light_buffer,
+                0,
+                bytemuck::cast_slice(&[self.light_uniform]),
+            );
+        } else {
+            println!("Provisional errro");
         }
     }
 
@@ -748,13 +800,14 @@ impl State {
             bytemuck::cast_slice(&[self.camera_uniform]),
         );
 
-        // Light rotation animation
-        let old_position: cgmath::Vector3<f32> = self.light_uniform.position.into();
-        self.light_uniform.position = (cgmath::Quaternion::from_axis_angle(
-            (0.0, 0.0, 1.0).into(),
-            cgmath::Deg(30.0 * dt.as_secs_f32()),
-        ) * old_position)
-            .into();
+        // Light rotation animation, eliminado solo era para hacer pruebas
+        //let old_position: cgmath::Vector3<f32> = self.light_uniform.position.into();
+        //
+        //self.light_uniform.position = (cgmath::Quaternion::from_axis_angle(
+        //    (0.0, 0.0, 1.0).into(),
+        //    cgmath::Deg(30.0 * dt.as_secs_f32()),
+        //) * old_position)
+        //    .into();
 
         let light_pos: cgmath::Point3<f32> = self.light_uniform.position.into();
 

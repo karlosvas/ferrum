@@ -283,6 +283,22 @@ pub struct Model {
     pub type_model: TypeModel,
 }
 
+pub struct ModelDesc<'a> {
+    pub path: &'a str,
+    pub instances: Vec<Instance>,
+    pub kind: TypeModel,
+}
+
+impl<'a> ModelDesc<'a> {
+    pub fn new(path: &'a str, instances: Vec<Instance>, kind: TypeModel) -> Self {
+        Self {
+            path,
+            instances,
+            kind,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub enum TypeModel {
     StaticObj,

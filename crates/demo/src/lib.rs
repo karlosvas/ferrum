@@ -4,7 +4,7 @@ use wasm_bindgen::prelude::*;
 use winit::event_loop::EventLoopProxy;
 use {
     ferrum::State,
-    std::sync::Arc,
+    std::{collections::HashMap, sync::Arc},
     winit::{
         application::ApplicationHandler,
         dpi::PhysicalSize,
@@ -19,6 +19,7 @@ pub type SetupFn = Box<dyn FnOnce(&mut State)>;
 pub type UpdateFn = Box<dyn FnMut(&mut State)>;
 
 pub struct App {
+    pub demo_models: HashMap<&'static str, Box<dyn ferrum::IngotTrait>>,
     pub state: Option<State>,
     setup: Option<SetupFn>,
     update: Option<UpdateFn>,
@@ -29,6 +30,7 @@ pub struct App {
 impl App {
     pub fn new() -> Self {
         Self {
+            demo_models: HashMap::new(),
             state: None,
             setup: None,
             update: None,

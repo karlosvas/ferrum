@@ -28,15 +28,15 @@ jobs:
         include:
           - os: windows-latest
             artifact: ferrum-windows-x86_64.exe
-            binary: target/release/engine.exe
+            binary: target/release/demo.exe
 
           - os: ubuntu-latest
             artifact: ferrum-linux-x86_64
-            binary: target/release/engine
+            binary: target/release/demo
 
           - os: macos-latest
             artifact: ferrum-macos-aarch64
-            binary: target/release/engine
+            binary: target/release/demo
 
     steps:
       - uses: actions/checkout@v4
@@ -65,7 +65,7 @@ jobs:
             libwayland-dev libxkbcommon-dev
 
       - name: Build release binary
-        run: cargo build --release --bin engine
+        run: cargo build --release -p demo
 
       - name: Rename binary (Unix)
         if: matrix.os != 'windows-latest'
