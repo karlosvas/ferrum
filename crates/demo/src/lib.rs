@@ -1,10 +1,15 @@
+pub mod config;
+
+use crate::config::AppConfig;
+
+use ferrum::KeyCode;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 #[cfg(target_arch = "wasm32")]
 use winit::event_loop::EventLoopProxy;
 use {
-    ferrum::State,
-    std::{collections::HashMap, sync::Arc},
+    ferrum::{State, config::WindowSize},
+    std::sync::Arc,
     winit::{
         application::ApplicationHandler,
         dpi::PhysicalSize,
@@ -18,22 +23,33 @@ use {
 pub type SetupFn = Box<dyn FnOnce(&mut State)>;
 pub type UpdateFn = Box<dyn FnMut(&mut State)>;
 
+#[derive(Default)]
 pub struct App {
-    pub demo_models: HashMap<&'static str, Box<dyn ferrum::IngotTrait>>,
     pub state: Option<State>,
     setup: Option<SetupFn>,
     update: Option<UpdateFn>,
+    window: Option<Arc<Window>>,
+    config: AppConfig,
     #[cfg(target_arch = "wasm32")]
     pub proxy: Option<EventLoopProxy<State>>,
 }
 
-impl App {
-    pub fn new() -> Self {
+impl AppConfig {
+    pub fn new(size: Option<PhysicalSize<u32>>) -> Self {
         Self {
-            demo_models: HashMap::new(),
+            size: size.unwrap_or_default(),
+        }
+    }
+}
+
+impl App {
+    pub fn new(config: AppConfig) -> Self {
+        Self {
             state: None,
             setup: None,
             update: None,
+            window: None,
+            config,
             #[cfg(target_arch = "wasm32")]
             proxy: None,
         }
@@ -96,8 +112,12 @@ impl App {
 impl ApplicationHandler<State> for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         #[allow(unused_mut)]
-        let mut window_attributes: WindowAttributes =
-            Window::default_attributes().with_title("Ferrum");
+        let mut window_attributes: WindowAttributes = Window::default_attributes()
+            .with_title("Ferrum")
+            .with_inner_size(ferrum::PhysicalSize::new(
+                self.config.size.width,
+                self.config.size.height,
+            ));
 
         #[cfg(target_arch = "wasm32")]
         {
@@ -127,13 +147,17 @@ impl ApplicationHandler<State> for App {
         }
 
         let window: Arc<Window> = Arc::new(event_loop.create_window(window_attributes).unwrap());
+        self.window = Some(Arc::clone(&window));
+        let inner_size: ferrum::PhysicalSize<u32> = window.inner_size();
+        let setup = self.setup.take();
 
         #[cfg(not(target_arch = "wasm32"))]
         {
-            let setup = self.setup.take();
+            let size: WindowSize = WindowSize::new(inner_size.width, inner_size.height);
+
             self.state = Some(
                 pollster::block_on(async move {
-                    let mut state: State = State::new(window).await?;
+                    let mut state: State = State::new(window, size).await?;
                     if let Some(s) = setup {
                         s(&mut state);
                     }
@@ -142,13 +166,14 @@ impl ApplicationHandler<State> for App {
                 .unwrap(),
             );
         }
-
         #[cfg(target_arch = "wasm32")]
         {
             if let Some(proxy) = self.proxy.take() {
                 let setup = self.setup.take();
                 wasm_bindgen_futures::spawn_local(async move {
-                    let mut state = State::new(window).await.expect("Unable to create canvas");
+                    let mut state = State::new(window, size)
+                        .await
+                        .expect("Unable to create canvas");
                     if let Some(s) = setup {
                         s(&mut state);
                     }
@@ -179,10 +204,14 @@ impl ApplicationHandler<State> for App {
                 match state.render() {
                     Ok(_) => {}
                     Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
-                        let size: PhysicalSize<u32> = state.window.inner_size();
-                        state.resize(size.height, size.width);
+                        if let Some(window) = &self.window {
+                            let size: PhysicalSize<u32> = window.inner_size();
+                            state.resize(size.height, size.width);
+                        } else {
+                            log::error!("Window not initialized yet");
+                        }
                     }
-                    Err(e) => log::error!("No se ha podido renderizar {}", e),
+                    Err(e) => log::error!("The app could not be rendered => {}", e),
                 }
             }
             WindowEvent::Resized(size) => state.resize(size.height, size.width),
@@ -194,7 +223,16 @@ impl ApplicationHandler<State> for App {
                         ..
                     },
                 ..
-            } => state.handle_key(event_loop, code, key_state.is_pressed()),
+            } => {
+                if code == KeyCode::Escape && key_state.is_pressed() {
+                    #[cfg(not(target_arch = "wasm32"))]
+                    event_loop.exit();
+                } else {
+                    state
+                        .camera_controller
+                        .handle_key(code, key_state.is_pressed());
+                }
+            }
             _ => {}
         }
     }
@@ -213,8 +251,8 @@ impl ApplicationHandler<State> for App {
     }
 
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
-        if let Some(state) = &self.state {
-            state.window.request_redraw();
+        if let Some(window) = &self.window {
+            window.request_redraw();
         }
     }
 }

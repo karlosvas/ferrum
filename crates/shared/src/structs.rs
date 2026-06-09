@@ -13,9 +13,9 @@ pub struct Camera3Wide {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct RpiDemo {
-    light: SensorReading,
-    microphone: Vec<Microphone>,
-    camera: Camera3Wide,
+    pub light: SensorReading,
+    pub microphone: Vec<Microphone>,
+    pub camera: Camera3Wide,
 }
 
 impl RpiDemo {

@@ -1,19 +1,19 @@
 mod camera;
+pub mod config;
 mod hdr;
 mod light;
 mod material;
-mod math;
-mod models;
+pub mod math;
+pub mod models;
 mod pipeline;
 mod resources;
 mod structs;
 mod texture;
 
-use cgmath::EuclideanSpace;
-
 use crate::{
+    config::WindowSize,
     hdr::HdrPipeline,
-    math::TransformDelta,
+    light::Light,
     models::{DrawShadow, InstanceRaw, Model, ModelVertex, Vertex},
     texture::CubeTexture,
 };
@@ -35,7 +35,7 @@ pub use {
         SurfaceCapabilities, SurfaceTexture, TextureFormat, TextureView, util::DeviceExt,
         wgt::SurfaceConfiguration,
     },
-    winit::{dpi::PhysicalSize, event_loop::ActiveEventLoop, keyboard::KeyCode, window::Window},
+    winit::{dpi::PhysicalSize, event_loop::ActiveEventLoop, keyboard::KeyCode},
 };
 
 pub struct Ingot<T> {
@@ -43,19 +43,10 @@ pub struct Ingot<T> {
     _marker: PhantomData<T>,
 }
 
-pub trait IngotTrait {
-    fn id(&self) -> usize;
-}
-
-impl<T> IngotTrait for Ingot<T> {
-    fn id(&self) -> usize {
-        self.id
-    }
-}
-
 enum Bead<T> {
     Burning,
     Molten(T),
+    #[allow(dead_code)]
     Ash,
 }
 
@@ -98,14 +89,16 @@ pub struct State {
     pub hdr: hdr::HdrPipeline,
     pub environment_bind_group: wgpu::BindGroup,
     pub sky_pipeline: wgpu::RenderPipeline,
-
-    pub window: Arc<Window>,
 }
 
 impl State {
-    pub async fn new(window: Arc<Window>) -> anyhow::Result<Self> {
-        let window_size: PhysicalSize<u32> = window.inner_size();
-
+    pub async fn new(
+        target: impl raw_window_handle::HasWindowHandle
+        + raw_window_handle::HasDisplayHandle
+        + wgpu::WasmNotSendSync
+        + 'static,
+        window_size: WindowSize,
+    ) -> anyhow::Result<Self> {
         let backend_instance: wgpu::Instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
             #[cfg(target_arch = "wasm32")]
             backends: wgpu::Backends::GL | wgpu::Backends::BROWSER_WEBGPU,
@@ -116,7 +109,8 @@ impl State {
             ..Default::default()
         });
 
-        let window_surface: Surface = backend_instance.create_surface(window.clone())?;
+        // Surface to be drawn
+        let window_surface: Surface = backend_instance.create_surface(target)?;
 
         // Representation of the system's physical GPU
         let adapter: Adapter = backend_instance
@@ -145,8 +139,8 @@ impl State {
                 trace: wgpu::Trace::Off,
             })
             .await?;
-        let device = Arc::new(device);
-        let queue = Arc::new(queue);
+        let device: Arc<Device> = Arc::new(device);
+        let queue: Arc<Queue> = Arc::new(queue);
 
         // A dynamic query of the capabilities that varies according to the adapter you have
         let surface_caps: SurfaceCapabilities = window_surface.get_capabilities(&adapter);
@@ -569,7 +563,6 @@ impl State {
             hdr,
             environment_bind_group,
             sky_pipeline,
-            window,
         })
     }
 
@@ -734,51 +727,8 @@ impl State {
         }
     }
 
-    pub fn move_flare_light(&mut self, light_id: &usize, transform: TransformDelta) {
-        // Aqui me quedo pillado porque claro el modelo que le paso
-        // no tiene el id para buscarlo en el map
-        if let Some(l) = &mut self.light_models.get_mut(light_id) {
-            // Ya se que no hay que poner este codigo pero es psheudocodigo osea aqui deveria
-            // utilizar self para mover de forma parecida a como haceia en evolbe la luz.
-            // ademas estaria bien tener una funcion en vez de repetir cosas
-
-            let old_position: cgmath::Vector3<f32> = self.light_uniform.position.into();
-            let new_pos: Vector3<f32> = old_position + transform.translation;
-            self.light_uniform.position = [new_pos.x, new_pos.y, new_pos.z];
-
-            let light_pos: cgmath::Point3<f32> = self.light_uniform.position.into();
-
-            let up: Vector3<f32> = if self.light_uniform.position[0].abs() < 0.01
-                && self.light_uniform.position[2].abs() < 0.01
-            {
-                Vector3::unit_z()
-            } else {
-                Vector3::unit_y()
-            };
-            let light_view: Matrix4<f32> =
-                Matrix4::look_at_rh(light_pos, Point3::new(0.0, 0.0, 0.0), up);
-            let light_proj: Matrix4<f32> = ortho(-20.0, 20.0, -20.0, 20.0, 0.1, 100.0);
-
-            let light_view_proj: Matrix4<f32> = light_proj * light_view;
-            self.light_uniform.light_view_proj = cgmath::Matrix4::into(light_view_proj);
-
-            self.queue.write_buffer(
-                &self.light_buffer,
-                0,
-                bytemuck::cast_slice(&[self.light_uniform]),
-            );
-        } else {
-            println!("Provisional errro");
-        }
-    }
-
-    pub fn handle_key(&mut self, event_loop: &ActiveEventLoop, key: KeyCode, is_pressed: bool) {
-        if key == KeyCode::Escape && is_pressed {
-            #[cfg(not(target_arch = "wasm32"))]
-            event_loop.exit();
-        } else {
-            self.camera_controller.handle_key(key, is_pressed);
-        }
+    pub fn light_handle(&mut self) -> Light {
+        Light
     }
 
     pub fn evolbe(&mut self) {
@@ -800,7 +750,8 @@ impl State {
             bytemuck::cast_slice(&[self.camera_uniform]),
         );
 
-        // Light rotation animation, eliminado solo era para hacer pruebas
+        // TODO: Light rotation animation, eliminado solo era para hacer pruebas, en un futuro
+        // utilizar para movimientoi del sol en la demo
         //let old_position: cgmath::Vector3<f32> = self.light_uniform.position.into();
         //
         //self.light_uniform.position = (cgmath::Quaternion::from_axis_angle(

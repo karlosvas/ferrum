@@ -1,21 +1,36 @@
 use {
-    anyhow::Error, axum::{
+    anyhow::Error,
+    axum::{
         Router,
         extract::{
-            WebSocketUpgrade,
+            State, WebSocketUpgrade,
             ws::{CloseFrame, Message, WebSocket},
         },
         response::IntoResponse,
         routing::get,
-    }, demo::App, ferrum::{Deg, Instance, Quaternion, Rotation3, TypeModel, Vector3, models::ModelDesc}, shared::structs::RpiDemo, std::{result::Result::Ok, time::Duration}, tokio::{net::TcpListener, runtime::Runtime, time::Interval}, tsl2591_rs::driver::SensorReading
+    },
+    demo::{App, config::AppConfig},
+    ferrum::{
+        Deg, Instance, Quaternion, Rotation3, TypeModel, Vector3, math::TransformDelta,
+        models::ModelDesc,
+    },
+    shared::structs::RpiDemo,
+    std::{
+        cell::RefCell, collections::HashMap, rc::Rc, result::Result::Ok, sync::mpsc, time::Duration,
+    },
+    tokio::{net::TcpListener, time::Interval},
+    tsl2591_rs::driver::SensorReading,
 };
 
 #[derive(Clone)]
 struct DemoState {
-    data_sender: mpsc::Sender<(usize, RpiDemo)>,
+    data_sender: mpsc::Sender<RpiDemo>,
 }
 
 fn main() -> anyhow::Result<(), Error> {
+    let demo_models: Rc<RefCell<HashMap<&str, usize>>> = Rc::new(RefCell::new(HashMap::new()));
+    let demo_models_update: Rc<RefCell<HashMap<&str, usize>>> = demo_models.clone();
+
     let (tx, rx) = std::sync::mpsc::channel::<RpiDemo>();
 
     std::thread::spawn(move || {
@@ -24,26 +39,76 @@ fn main() -> anyhow::Result<(), Error> {
         }
     });
 
-    App::new()
-        .ferrum_setup(setup)
-        .ferrum_update(move |self, state| {
-            if let Some(venus) = self.demo_models.get("venus") {
-                while let Ok(new_data) = rx.try_recv() {
-                    let light: LightSensor = RpiDemo.light;
+    let app_config: AppConfig = AppConfig::new(Some(ferrum::PhysicalSize::new(500, 500)));
 
-                    let new_transform_light: ferrum::math::TransformDelta = ferrum::math::TransformDelta::new(
-                            cgmath::Vector3::new(0.0, 0.0, 0.0),
-                            cgmath::Quaternion::new(0.0,0.0,0.0, 0.0),
-                            cgmath::Vector3::new(0.0,0.0,0.0)
-                    );
+    // Estado que persiste entre frames (UpdateFn es FnMut)
+    let mut light_x: f32 = 0.0; // posición acumulada en X
+    let mut dir: f32 = 1.0; // sentido del movimiento (+1 / -1)
+    let mut last_lux: f32 = 0.0; // último lux recibido del sensor
 
-                    state.move_flare_object_light(venus.id, new_transform_light);
-                }
-            }
-        }).run()
+    App::new(app_config)
+        .ferrum_setup(move |state| setup(state, &demo_models))
+        .ferrum_update(move |state| {
+            update(
+                state,
+                &demo_models_update,
+                &rx,
+                &mut light_x,
+                &mut dir,
+                &mut last_lux,
+            )
+        })
+        .run()
 }
 
-fn setup(&mut self, state: &mut ferrum::State) {
+fn update(
+    state: &mut ferrum::State,
+    demo_models: &Rc<RefCell<HashMap<&str, usize>>>,
+    rx: &mpsc::Receiver<RpiDemo>,
+    light_x: &mut f32,
+    dir: &mut f32,
+    last_lux: &mut f32,
+) {
+    let demo_models = demo_models.borrow_mut();
+
+    let now: web_time::Instant = web_time::Instant::now();
+    let dt: web_time::Duration = now - state.last_render_time;
+    state.last_render_time = now;
+
+    while let Ok(new_data) = rx.try_recv() {
+        let light: SensorReading = new_data.light;
+        *last_lux = light.lux;
+    }
+
+    const SPEED: f32 = 5.0;
+    let dx: f32 = *dir * SPEED * dt.as_secs_f32();
+    *light_x += dx;
+    if *light_x >= 10.0 {
+        *light_x = 10.0;
+        *dir = -1.0;
+    } else if *light_x <= 0.0 {
+        *light_x = 0.0;
+        *dir = 1.0;
+    }
+
+    let transform_delta: TransformDelta = TransformDelta::new(
+        Vector3::new(dx, 0.0, 0.0),
+        Quaternion::new(0.0, 0.0, 0.0, 0.0),
+        Vector3::new(0.0, 0.0, 0.0),
+    );
+
+    if let Some(light_id) = demo_models.get("venus") {
+        state
+            .light_handle()
+            .move_flare_object_light(state, light_id, transform_delta, *last_lux);
+    } else {
+        log::error!("Invalid ID");
+    };
+}
+
+fn setup(state: &mut ferrum::State, demo_models: &Rc<RefCell<HashMap<&str, usize>>>) {
+    let mut demo_models = demo_models.borrow_mut();
+
     let plant: ModelDesc = ModelDesc::new(
         "plant/plant.obj",
         vec![Instance::new(
@@ -53,10 +118,10 @@ fn setup(&mut self, state: &mut ferrum::State) {
         )],
         TypeModel::StaticObj,
     );
-    
+
     let ingot: ferrum::Ingot<ferrum::models::Model> = state.spawn_model(plant);
-    self.demo_models.insert("plant", ingot);
-   
+    demo_models.insert("plant", ingot.id);
+
     let floor: ModelDesc = ModelDesc::new(
         "floor/floor.obj",
         vec![Instance::default()],
@@ -64,7 +129,7 @@ fn setup(&mut self, state: &mut ferrum::State) {
     );
 
     let ingot: ferrum::Ingot<ferrum::models::Model> = state.spawn_model(floor);
-    self.demo_models.insert("floor", ingot);
+    demo_models.insert("floor", ingot.id);
 
     let venus: ModelDesc = ModelDesc::new(
         "sun/venus.obj",
@@ -73,15 +138,13 @@ fn setup(&mut self, state: &mut ferrum::State) {
     );
 
     let ingot: ferrum::Ingot<ferrum::models::Model> = state.spawn_model(venus);
-    self.demo_models.insert("venus", ingot);
+    demo_models.insert("venus", ingot.id);
 }
 
-async fn up_websokets(tx: mpsc::Sender<(usize, Model)>) -> Result<(), anyhow::Error> {
+async fn up_websokets(tx: mpsc::Sender<RpiDemo>) -> Result<(), anyhow::Error> {
     let app: Router = Router::new()
-                .route("/demo", get(websocket_handler))
-                .with_state(DemoState {
-                    data_sender: tx
-                });
+        .route("/demo", get(websocket_handler))
+        .with_state(DemoState { data_sender: tx });
 
     let listener: TcpListener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;
     println!("Listening on 0.0.0.0:3000/demo");
@@ -93,17 +156,18 @@ async fn up_websokets(tx: mpsc::Sender<(usize, Model)>) -> Result<(), anyhow::Er
 
 #[axum::debug_handler]
 async fn websocket_handler(
-            ws: WebSocketUpgrade, tx,
-            State(state): State<Demo>
-        ) -> impl IntoResponse {
+    ws: WebSocketUpgrade,
+    State(state): State<DemoState>,
+) -> impl IntoResponse {
     ws.on_failed_upgrade(|error| println!("Error upgrading websocket: {}", error))
-        .on_upgrade(handle_socket(tx))
+        .on_upgrade(move |socket| async move {
+            if let Err(e) = handle_socket(socket, state).await {
+                eprintln!("Socket error: {e}");
+            }
+        })
 }
 
-async fn handle_socket(
-            mut socket: WebSocket,
-            State(state): State<Demo>)
- {
+async fn handle_socket(mut socket: WebSocket, state: DemoState) -> anyhow::Result<()> {
     let mut interval: Interval = tokio::time::interval(Duration::from_secs(30));
 
     loop {
@@ -111,31 +175,26 @@ async fn handle_socket(
             msg = socket.recv() => {
                 match msg {
                     Some(Ok(Message::Binary(bytes))) => {
-                        let (data_received, _): (RpiDemo, _) = match bincode::serde::decode_from_slice(&bytes, bincode::config::standard()) {
-                            Ok(data) => data,
-                            Err(e) => {
-                                send_close_message(socket, 1011, &format!("Deserialize error: {}", e)).await;
-                                return;
-                            }
-                        };
-                        println!("{:?}", data_received);
-                        state.data_sender.send(data_received);
+                         let (data_received, _): (RpiDemo, _) =
+                            bincode::serde::decode_from_slice(&bytes, bincode::config::standard())
+                                .map_err(|e| anyhow::anyhow!("Deserialize error: {e}"))?;
+                        state.data_sender.send(data_received)?;
                     }
                     Some(Ok(Message::Close(reason))) => {
                         println!("Client closed: {:?}", reason);
-                        return;
+                        return Ok(());
                     }
                     Some(Err(e)) => {
                         send_close_message(socket, 1011, &format!("Error: {}", e)).await;
-                        return;
+                        return Ok(());
                     }
-                    None => return,
+                    None => return Ok(()),
                     Some(Ok(_)) => {}
                 }
             }
             _ = interval.tick() => {
                 if socket.send(Message::Ping(vec![].into())).await.is_err() {
-                    return;
+                    return Ok(());
                 }
             }
         }
@@ -145,7 +204,7 @@ async fn handle_socket(
 async fn send_close_message(mut socket: WebSocket, code: u16, reason: &str) {
     _ = socket
         .send(Message::Close(Some(CloseFrame {
-            code: code,
+            code,
             reason: reason.into(),
         })))
         .await;

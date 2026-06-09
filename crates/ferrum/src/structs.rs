@@ -1,8 +1,6 @@
 #[cfg(target_arch = "wasm32")]
 use winit::event_loop::EventLoopProxy;
 
-use crate::material::Material;
-
 #[repr(C)]
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Vertex {

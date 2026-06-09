@@ -21,6 +21,7 @@ bytemuck = { version = "1.14", features = ["derive"] }
 cgmath = "0.18"
 tobj = { version = "3.2", default-features = false, features = ["async"] }
 web-time = "1.1.0"
+raw-window-handle = "0.6.2"
 
 [dependencies.image]
 version = "0.24"
