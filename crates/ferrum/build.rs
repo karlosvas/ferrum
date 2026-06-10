@@ -32,7 +32,7 @@ fn main() -> Result<()> {
             {
                 use winres::WindowsResource;
                 let mut res: WindowsResource = winres::WindowsResource::new();
-                res.set_icon(root.join("crates/ferrum/assets/logo.ico").to_str().unwrap());
+                res.set_icon(root.join("crates/demo/assets/logo.ico").to_str().unwrap());
                 res.compile()?;
             }
         }

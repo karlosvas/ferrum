@@ -111,12 +111,17 @@ fn compile_rpi() -> Result<()> {
     );
 
     if cfg!(target_os = "windows") {
-        let wsl_user: String = std::env::var("WSL_USER")?;
+        let wsl_user: String = std::env::var("WSL_USER")
+            .map_err(|_| anyhow::anyhow!("WSL_USER not set (define it in .env)"))?;
         let cargo_path: String = format!("/home/{}/.cargo/bin/cargo", wsl_user);
-        let status: ExitStatus = Command::new("wsl")
+
+        // Si WSL_DISTRO no está definida, se usa la distro predeterminada de WSL
+        let mut cmd: Command = Command::new("wsl");
+        if let std::result::Result::Ok(distro) = std::env::var("WSL_DISTRO") {
+            cmd.args(["-d", distro.as_str()]);
+        }
+        let status: ExitStatus = cmd
             .args([
-                "-d",
-                "Ubuntu",
                 "-u",
                 wsl_user.as_str(),
                 "--",
