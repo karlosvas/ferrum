@@ -13,5 +13,7 @@ futures-util = "0.3"
 bincode = { version = "2", features = ["serde"] }
 tsl2591-rs = { version = "0.1.4", features = ["serde"] }
 dotenvy = "0.15.7"
+log = "0.4"
+env_logger = "0.10"
 image = "0.25.10"
 rppal = "0.22.1"

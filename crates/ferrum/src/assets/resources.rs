@@ -4,9 +4,8 @@ use std::{
 };
 
 use crate::{
-    material,
-    models::{self, TypeModel},
-    structs, texture,
+    assets::{self, TypeModel},
+    material, structs, texture,
 };
 use cgmath::{Vector2, Vector3};
 use wgpu::{BindGroup, Buffer, util::DeviceExt};
@@ -146,9 +145,9 @@ pub async fn load_model(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     layout: &wgpu::BindGroupLayout,
-    instances: Vec<models::Instance>,
+    instances: Vec<assets::Instance>,
     type_model: TypeModel,
-) -> anyhow::Result<models::Model> {
+) -> anyhow::Result<assets::Model> {
     let obj_text: String = load_string(file_name).await?;
     let obj_cursor: Cursor<String> = Cursor::new(obj_text);
     let mut obj_reder: BufReader<_> = BufReader::new(obj_cursor);
@@ -262,7 +261,7 @@ pub async fn load_model(
             let has_texcoords: bool = !m.mesh.texcoords.is_empty();
             let has_normal_indices: bool = !m.mesh.normal_indices.is_empty();
 
-            let mut vertices: Vec<models::ModelVertex> = (0..m.mesh.positions.len() / 3)
+            let mut vertices: Vec<assets::ModelVertex> = (0..m.mesh.positions.len() / 3)
                 .map(|i| {
                     let pi = i * 3;
 
@@ -307,7 +306,7 @@ pub async fn load_model(
 
                     let bitangent: [f32; 3] = [0.0, 0.0, 0.0];
 
-                    models::ModelVertex {
+                    assets::ModelVertex {
                         position,
                         text_cords,
                         normal,
@@ -322,9 +321,9 @@ pub async fn load_model(
             let mut trangles_included = vec![0; vertices.len()];
 
             for c in indices.chunks(3) {
-                let v0: models::ModelVertex = vertices[c[0] as usize];
-                let v1: models::ModelVertex = vertices[c[1] as usize];
-                let v2: models::ModelVertex = vertices[c[2] as usize];
+                let v0: assets::ModelVertex = vertices[c[0] as usize];
+                let v1: assets::ModelVertex = vertices[c[1] as usize];
+                let v2: assets::ModelVertex = vertices[c[2] as usize];
 
                 let pos0: Vector3<f32> = v0.position.into();
                 let pos1: Vector3<f32> = v1.position.into();
@@ -379,7 +378,7 @@ pub async fn load_model(
             // Average the tangents/bitangents
             for (i, n) in trangles_included.into_iter().enumerate() {
                 let denom: f32 = 1.0 / n as f32;
-                let v: &mut models::ModelVertex = &mut vertices[i];
+                let v: &mut assets::ModelVertex = &mut vertices[i];
                 v.tangent = (Vector3::from(v.tangent) * denom).into();
                 v.bitangent = (Vector3::from(v.bitangent) * denom).into();
             }
@@ -408,7 +407,7 @@ pub async fn load_model(
         })
         .collect::<Vec<_>>();
 
-    let instances_raws: Vec<models::InstanceRaw> = instances.iter().map(|i| i.to_raw()).collect();
+    let instances_raws: Vec<assets::InstanceRaw> = instances.iter().map(|i| i.to_raw()).collect();
 
     let label: String = format!("{file_name}_instance_buffer");
     let instance_buffer: Buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -417,7 +416,7 @@ pub async fn load_model(
         usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
     });
 
-    Ok(models::Model {
+    Ok(assets::Model {
         meshes,
         materials,
         instances,

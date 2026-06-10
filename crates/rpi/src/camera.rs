@@ -8,13 +8,13 @@ const IMAGE_HEIGHT: u32 = 1296;
 const DEFAULT_BORDER_PERCENT: u32 = 10;
 const CAPTURE_PATH: &str = "/tmp/light_detect.jpg";
 
-/// Radio (en unidades de mundo) que abarca media imagen al proyectar.
+/// Radius (in world units) covered by half the image when projecting.
 const WORLD_RADIUS: f64 = 10.0;
-/// Altura fija a la que se sitúa la luz sobre el plano (cámara apuntando hacia ARRIBA).
+/// Fixed height at which the light sits above the plane (camera pointing UP).
 const LIGHT_HEIGHT: f64 = 10.0;
 
 pub struct CameraSensor {
-    /// Porcentaje de borde excluido del análisis
+    /// Percentage of the border excluded from the analysis
     pub border_percent: u32,
 }
 
@@ -25,13 +25,13 @@ impl CameraSensor {
         }
     }
 
-    /// Captura una imagen y devuelve el ángulo de la luz más brillante.
-    /// Pensado para usarse como productor de datos en el bucle de `main`.
+    /// Captures an image and returns the angle of the brightest light.
+    /// Meant to be used as a data producer in the `main` loop.
     pub fn read(&self) -> Camera3Wide {
         match self.capture_and_analyze() {
             Ok(camera) => camera,
             Err(e) => {
-                eprintln!("Camera error: {e}");
+                log::error!("Camera error: {e}");
                 Camera3Wide::default()
             }
         }
@@ -74,10 +74,10 @@ impl CameraSensor {
 
         let (w, h) = img.dimensions();
 
-        // Convertir a escala de grises para el análisis de brillo
+        // Convert to grayscale for the brightness analysis
         let gray = img.to_luma8();
 
-        // Exclusión de borde
+        // Border exclusion
         let bx = (w * self.border_percent / 100).max(1);
         let by = (h * self.border_percent / 100).max(1);
         let sx = bx;
@@ -85,7 +85,7 @@ impl CameraSensor {
         let sy = by;
         let ey = h - by;
 
-        // Buscar el píxel más brillante
+        // Find the brightest pixel
         let mut max_bright = 0.0f32;
         let mut max_x = 0;
         let mut max_y = 0;
@@ -108,17 +108,17 @@ impl CameraSensor {
     }
 }
 
-/// Proyecta un píxel de la imagen al espacio 3D del mundo.
+/// Projects an image pixel into the 3D world space.
 ///
-/// Esta función aísla la heurística de "origen de la posición" (actualmente, la
-/// proyección del píxel más brillante) para que pueda sustituirse en el futuro por
-/// otro sistema (p. ej. detección de marcadores ArUco) sin tocar el resto del flujo.
+/// This function isolates the "position source" heuristic (currently, the
+/// projection of the brightest pixel) so it can be replaced in the future by
+/// another system (e.g. ArUco marker detection) without touching the rest of the flow.
 ///
-/// Convención: la cámara apunta hacia ARRIBA, por lo que el plano de la imagen
-/// se mapea al plano horizontal X-Z del mundo y la luz se sitúa a una altura fija `Y`.
-/// La coordenada `y` de la imagen crece hacia abajo, de ahí el signo negativo en Z.
+/// Convention: the camera points UP, so the image plane maps to the world's
+/// horizontal X-Z plane and the light sits at a fixed height `Y`.
+/// The image `y` coordinate grows downwards, hence the negative sign on Z.
 fn project_pixel_to_world(px: u32, py: u32, width: u32, height: u32) -> (f64, f64, f64) {
-    // Normalizar a [-1, 1] respecto al centro de la imagen.
+    // Normalize to [-1, 1] relative to the image center.
     let nx = (px as f64 / width as f64) * 2.0 - 1.0;
     let ny = (py as f64 / height as f64) * 2.0 - 1.0;
 

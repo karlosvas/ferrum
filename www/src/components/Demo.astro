@@ -261,12 +261,12 @@ import GradientButton from "./GradientButton.astro";
 
     started = true;
 
-    console.log("[ferrum] importando /pkg/engine.js …");
+    console.log("[ferrum] importando /pkg/demo.js …");
     let init;
     try {
-      ({ default: init } = await import("/pkg/engine.js"));
+      ({ default: init } = await import("/pkg/demo.js"));
     } catch (e) {
-      console.error("[ferrum] No se pudo cargar /pkg/engine.js:", e);
+      console.error("[ferrum] No se pudo cargar /pkg/demo.js:", e);
       started = false;
       return;
     }

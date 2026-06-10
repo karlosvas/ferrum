@@ -9,10 +9,10 @@ pub struct LightSensor;
 impl LightSensor {
     pub async fn setup() -> Result<AdafruitTSL2591<I2cdev, Delay>, ComunicationError> {
         let i2c: I2cdev = I2cdev::new("/dev/i2c-1")?;
-        // Ganancia baja (1x) e integración corta para que el sensor sea MENOS
-        // sensible: así no se satura ante luz fuerte y mantiene rango útil.
-        // Con `Gain::Medium` (~25x) los canales se saturaban y el lux calculado
-        // caía, por eso "mucha luz" se representaba como poca.
+        // Low gain (1x) and short integration so the sensor is LESS sensitive:
+        // it does not saturate under strong light and keeps a useful range.
+        // With `Gain::Medium` (~25x) the channels saturated and the computed lux
+        // dropped, which is why "lots of light" showed up as little.
         let mut sensor: AdafruitTSL2591<I2cdev, Delay> = AdafruitTSL2591::new(
             i2c,
             Delay,

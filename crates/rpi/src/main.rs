@@ -20,6 +20,7 @@ use {thiserror::Error, tsl2591_rs::driver::Tsl2591Error};
 #[tokio::main]
 async fn main() -> Result<(), ComunicationError> {
     dotenvy::dotenv().ok();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
     let ip_host: String = std::env::var("IP_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
     let url: String = format!("ws://{}:3000/demo", ip_host);
@@ -28,7 +29,7 @@ async fn main() -> Result<(), ComunicationError> {
         match connect_async(&url).await {
             Ok((s, _)) => break s,
             Err(e) => {
-                eprintln!("Error conection to {url} ({e}), retrying in 2s...");
+                log::error!("Error connecting to {url} ({e}), retrying in 2s...");
                 tokio::time::sleep(Duration::from_secs(2)).await;
             }
         }
@@ -37,13 +38,13 @@ async fn main() -> Result<(), ComunicationError> {
     let mut light_sensor: AdafruitTSL2591<I2cdev, Delay> = LightSensor::setup().await?;
     let mut microphone_sensor: MicrophoneSensor = MicrophoneSensor::new();
 
-    eprintln!("Calibrating microphone noise floor, keep quiet...");
+    log::info!("Calibrating microphone noise floor, keep quiet...");
     microphone_sensor.calibrate();
 
-    // La cámara captura con rpicam-jpeg (~2-3s por foto), así que vive en su
-    // propio hilo y publica la última posición; el bucle de muestreo nunca se
-    // bloquea esperándola. Sin esto los micros solo se actualizaban cada ~3.5s
-    // y era imposible detectar un soplido.
+    // The camera captures with rpicam-jpeg (~2-3s per photo), so it lives in its
+    // own thread and publishes the latest position; the sampling loop never
+    // blocks waiting for it. Without this the mics only updated every ~3.5s
+    // and detecting a blow was impossible.
     let camera_pos: Arc<Mutex<Camera3Wide>> = Arc::new(Mutex::new(Camera3Wide::default()));
     {
         let camera_pos = Arc::clone(&camera_pos);
@@ -60,9 +61,9 @@ async fn main() -> Result<(), ComunicationError> {
     }
 
     let handle = tokio::spawn(async move {
-        // El sensor de luz bloquea ~130ms por lectura (espera de integración),
-        // así que se lee cada N iteraciones y se cachea; los micros marcan la
-        // cadencia del bucle para que el soplido se detecte con poca latencia.
+        // The light sensor blocks ~130ms per read (integration wait), so it is
+        // read every N iterations and cached; the mics set the loop cadence so
+        // a blow is detected with low latency.
         const LIGHT_EVERY_N_TICKS: u32 = 3;
         let mut tick: u32 = 0;
         let mut last_light: SensorReading = SensorReading {
@@ -99,17 +100,17 @@ async fn main() -> Result<(), ComunicationError> {
 
             let msg: Message = Message::Binary(bytes.into());
             if let Err(e) = socket.send(msg).await {
-                eprintln!("Error sending data: {e}, stopping loop");
+                log::error!("Error sending data: {e}, stopping loop");
                 break;
             }
 
-            // Cadencia del bucle de muestreo/envío. Los micros ya tardan ~100ms
-            // en muestrearse, así que el ciclo efectivo queda en ~150-250ms.
+            // Sampling/send loop cadence. The mics already take ~100ms to
+            // sample, so the effective cycle ends up at ~150-250ms.
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
     });
 
-    // Mantener vivo el proceso mientras la tarea de muestreo siga ejecutándose.
+    // Keep the process alive while the sampling task is still running.
     handle.await.ok();
 
     Ok(())

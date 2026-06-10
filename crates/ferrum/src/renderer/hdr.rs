@@ -86,7 +86,7 @@ impl HdrPipeline {
         let pipeline_layout: PipelineLayout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Hdr::pipeline_layout"),
-                bind_group_layouts: &[&layout],
+                bind_group_layouts: &[Some(&layout)],
                 immediate_size: 0,
             });
 
@@ -217,7 +217,7 @@ impl HdrLoader {
         let pipeline_layout: PipelineLayout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Cubemap pipeline_layout"),
-                bind_group_layouts: &[&equirect_layout],
+                bind_group_layouts: &[Some(&equirect_layout)],
                 immediate_size: 0,
             });
 

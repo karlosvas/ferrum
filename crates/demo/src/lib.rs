@@ -1,4 +1,10 @@
 pub mod config;
+pub mod scene;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod ssh;
+pub mod ui;
+#[cfg(target_arch = "wasm32")]
+pub mod ws_web;
 
 use crate::config::AppConfig;
 
@@ -22,12 +28,15 @@ use {
 
 pub type SetupFn = Box<dyn FnOnce(&mut State)>;
 pub type UpdateFn = Box<dyn FnMut(&mut State)>;
+pub type UiFn = Box<dyn FnMut(&egui::Context)>;
 
 #[derive(Default)]
 pub struct App {
     pub state: Option<State>,
     setup: Option<SetupFn>,
     update: Option<UpdateFn>,
+    ui_fn: Option<UiFn>,
+    egui_layer: Option<ui::EguiLayer>,
     window: Option<Arc<Window>>,
     config: AppConfig,
     #[cfg(target_arch = "wasm32")]
@@ -48,6 +57,8 @@ impl App {
             state: None,
             setup: None,
             update: None,
+            ui_fn: None,
+            egui_layer: None,
             window: None,
             config,
             #[cfg(target_arch = "wasm32")]
@@ -71,6 +82,14 @@ impl App {
         self
     }
 
+    pub fn ferrum_ui<F>(mut self, f: F) -> Self
+    where
+        F: FnMut(&egui::Context) + 'static,
+    {
+        self.ui_fn = Some(Box::new(f));
+        self
+    }
+
     pub fn run(mut self) -> anyhow::Result<()> {
         #[cfg(not(target_arch = "wasm32"))]
         {
@@ -82,31 +101,43 @@ impl App {
 
         #[cfg(target_arch = "wasm32")]
         {
+            // En la web el bucle no puede bloquear: spawn_app devuelve el
+            // control al navegador y sigue corriendo en callbacks.
+            use winit::platform::web::EventLoopExtWebSys;
             self.proxy = Some(event_loop.create_proxy());
+            event_loop.spawn_app(self);
+            Ok(())
         }
 
-        event_loop.run_app(&mut self)?;
-
-        Ok(())
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            event_loop.run_app(&mut self)?;
+            Ok(())
+        }
     }
+}
 
-    #[cfg(target_arch = "wasm32")]
-    #[wasm_bindgen(start)]
-    pub fn run_web() -> Result<(), wasm_bindgen::JsValue> {
-        console_error_panic_hook::set_once();
+/// Punto de entrada web: misma escena que el binario nativo, pero los datos
+/// de la RPi llegan como cliente WebSocket del servidor de la demo nativa.
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen(start)]
+pub fn run_web() -> Result<(), wasm_bindgen::JsValue> {
+    console_error_panic_hook::set_once();
 
-        let level: log::Level = if cfg!(debug_assertions) {
-            log::Level::Debug
-        } else {
-            log::Level::Warn
-        };
+    let level: log::Level = if cfg!(debug_assertions) {
+        log::Level::Debug
+    } else {
+        log::Level::Warn
+    };
 
-        console_log::init_with_level(level).unwrap_throw();
-        log::info!("Ferrum engine loaded successfully");
+    console_log::init_with_level(level).unwrap_throw();
+    log::info!("Ferrum engine loaded successfully");
 
-        App::new().run().unwrap_throw();
-        Ok(())
-    }
+    let (tx, rx) = std::sync::mpsc::channel::<shared::structs::RpiDemo>();
+    ws_web::connect(tx);
+
+    scene::build_app(rx).run().unwrap_throw();
+    Ok(())
 }
 
 impl ApplicationHandler<State> for App {
@@ -149,15 +180,15 @@ impl ApplicationHandler<State> for App {
         let window: Arc<Window> = Arc::new(event_loop.create_window(window_attributes).unwrap());
         self.window = Some(Arc::clone(&window));
         let inner_size: ferrum::PhysicalSize<u32> = window.inner_size();
+        let size: WindowSize = WindowSize::new(inner_size.width, inner_size.height);
         let setup = self.setup.take();
 
         #[cfg(not(target_arch = "wasm32"))]
         {
-            let size: WindowSize = WindowSize::new(inner_size.width, inner_size.height);
-
+            let window_for_state: Arc<Window> = Arc::clone(&window);
             self.state = Some(
                 pollster::block_on(async move {
-                    let mut state: State = State::new(window, size).await?;
+                    let mut state: State = State::new(window_for_state, size).await?;
                     if let Some(s) = setup {
                         s(&mut state);
                     }
@@ -165,11 +196,17 @@ impl ApplicationHandler<State> for App {
                 })
                 .unwrap(),
             );
+
+            if self.ui_fn.is_some() {
+                if let Some(state) = &self.state {
+                    self.egui_layer = Some(ui::EguiLayer::new(state, &window));
+                }
+            }
         }
         #[cfg(target_arch = "wasm32")]
         {
+            // El setup ya se sacó arriba con self.setup.take().
             if let Some(proxy) = self.proxy.take() {
-                let setup = self.setup.take();
                 wasm_bindgen_futures::spawn_local(async move {
                     let mut state = State::new(window, size)
                         .await
@@ -194,6 +231,13 @@ impl ApplicationHandler<State> for App {
             None => return,
         };
 
+        // La UI ve los eventos primero; si los consume (p. ej. arrastrar un
+        // slider) no deben llegar a la cámara del motor.
+        let mut ui_consumed: bool = false;
+        if let (Some(egui_layer), Some(window)) = (&mut self.egui_layer, &self.window) {
+            ui_consumed = egui_layer.on_window_event(window, &event);
+        }
+
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::RedrawRequested => {
@@ -201,9 +245,16 @@ impl ApplicationHandler<State> for App {
                 if let Some(update) = &mut self.update {
                     update(state);
                 }
-                match state.render() {
+                let render_result: Result<(), ferrum::SurfaceError> =
+                    match (&mut self.egui_layer, &mut self.ui_fn, &self.window) {
+                        (Some(egui_layer), Some(ui_fn), Some(window)) => {
+                            egui_layer.render_with_ui(state, window, ui_fn)
+                        }
+                        _ => state.render(),
+                    };
+                match render_result {
                     Ok(_) => {}
-                    Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
+                    Err(ferrum::SurfaceError::Lost | ferrum::SurfaceError::Outdated) => {
                         if let Some(window) = &self.window {
                             let size: PhysicalSize<u32> = window.inner_size();
                             state.resize(size.height, size.width);
@@ -227,7 +278,7 @@ impl ApplicationHandler<State> for App {
                 if code == KeyCode::Escape && key_state.is_pressed() {
                     #[cfg(not(target_arch = "wasm32"))]
                     event_loop.exit();
-                } else {
+                } else if !ui_consumed {
                     state
                         .camera_controller
                         .handle_key(code, key_state.is_pressed());
@@ -239,13 +290,16 @@ impl ApplicationHandler<State> for App {
 
     #[allow(unused_mut)]
     fn user_event(&mut self, _event_loop: &ActiveEventLoop, mut event: State) {
+        // En wasm el State llega aquí en diferido (se crea async en `resumed`),
+        // así que la capa de egui y el primer resize se montan en este punto.
         #[cfg(target_arch = "wasm32")]
-        {
-            event.window.request_redraw();
-            event.resize(
-                event.window.inner_size().height,
-                event.window.inner_size().width,
-            );
+        if let Some(window) = &self.window {
+            let size: PhysicalSize<u32> = window.inner_size();
+            event.resize(size.height, size.width);
+            if self.ui_fn.is_some() && self.egui_layer.is_none() {
+                self.egui_layer = Some(ui::EguiLayer::new(&event, window));
+            }
+            window.request_redraw();
         }
         self.state = Some(event)
     }

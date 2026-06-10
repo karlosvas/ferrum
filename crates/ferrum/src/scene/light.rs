@@ -182,26 +182,22 @@ impl Light {
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct LightUniform {
     pub position: [f32; 3],
-    pub _padding: u32, // aligns color to offset 16 (vec3 WGSL alignment)
+    // aligns color to offset 16 (vec3 WGSL alignment)
+    pub _padding: u32,
     pub color: [f32; 3],
-    pub _padding2: u32, // aligns light_view_proj to offset 32
+    // aligns light_view_proj to offset 32
+    pub _padding2: u32,
     pub light_view_proj: [[f32; 4]; 4],
 }
 
 impl LightUniform {
-    fn new(
-        position: [f32; 3],
-        color: [f32; 3],
-        light_view_proj: [[f32; 4]; 4],
-        _padding: u32,
-        _padding2: u32,
-    ) -> Self {
+    pub fn new(position: [f32; 3], color: [f32; 3], light_view_proj: [[f32; 4]; 4]) -> Self {
         Self {
             position,
             color,
             light_view_proj,
-            _padding,
-            _padding2,
+            _padding: 0,
+            _padding2: 0,
         }
     }
 
@@ -249,8 +245,8 @@ impl LightUniform {
             },
             depth_stencil: depth_format.map(|format| wgpu::DepthStencilState {
                 format,
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::Less,
+                depth_write_enabled: Some(true),
+                depth_compare: Some(wgpu::CompareFunction::Less),
                 stencil: wgpu::StencilState::default(),
                 bias: depth_bias,
             }),

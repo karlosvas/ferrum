@@ -9,9 +9,9 @@ pub const MICROPHONES_SIZE: usize = 4;
 pub struct MicrophoneSensor {
     pub i2c: I2c,
     pub microphones: [MicReading; MICROPHONES_SIZE],
-    /// Suelo de ruido (amplitud ambiente) por canal. Cada micro tiene una
-    /// sensibilidad y offset distintos; sin esto, un canal "ruidoso" parecería
-    /// siempre soplado y sesgaría la dirección del viento.
+    /// Noise floor (ambient amplitude) per channel. Each mic has a different
+    /// sensitivity and offset; without this, a "noisy" channel would always
+    /// look blown into and bias the wind direction.
     baseline: [f32; MICROPHONES_SIZE],
 }
 
@@ -27,8 +27,8 @@ impl MicrophoneSensor {
         }
     }
 
-    /// Calibra el suelo de ruido de cada canal promediando varias ráfagas.
-    /// Llamar al arrancar, con el ambiente en silencio (sin soplar).
+    /// Calibrates each channel's noise floor by averaging several bursts.
+    /// Call at startup, with the environment silent (no blowing).
     pub fn calibrate(&mut self) {
         const ROUNDS: usize = 6;
         let mut acc: [f32; MICROPHONES_SIZE] = [0.0; MICROPHONES_SIZE];
@@ -40,25 +40,26 @@ impl MicrophoneSensor {
         for ch in 0..MICROPHONES_SIZE {
             self.baseline[ch] = acc[ch] / ROUNDS as f32;
         }
-        eprintln!("Mic baseline: {:?}", self.baseline);
+        log::info!("Mic baseline: {:?}", self.baseline);
     }
 
     pub fn read_channel(&mut self, channel: u8) -> i16 {
         let mux: u16 = 0x04u16 + channel as u16;
 
         // OS=1, MUX=single-ended, PGA=±2.048V, MODE=single-shot, DR=860SPS, COMP_QUE=disabled.
-        // DR a 860SPS (bits 111 = 0x00E0) para poder muestrear rápido la amplitud.
+        // DR at 860SPS (bits 111 = 0x00E0) to sample the amplitude quickly.
         let config: u16 = 0x8000 | (mux << 12) | 0x0400 | 0x0100 | 0x00E0 | 0x0003;
 
-        // smbus envía little-endian, ADS1115 espera big-endian → swap antes de escribir
+        // smbus sends little-endian, ADS1115 expects big-endian → swap before writing
         self.i2c
             .smbus_write_word(REG_CONFIG, config.swap_bytes())
             .unwrap();
 
-        // Esperar a que la conversión TERMINE de verdad: el bit OS (15) del
-        // registro de config pasa a 1. Con un sleep fijo a veces se leía la
-        // conversión anterior — del OTRO canal tras cambiar el MUX — y eso
-        // aparecía como picos fantasma de miles de cuentas en canales en silencio.
+        // Wait until the conversion ACTUALLY finishes: the OS bit (15) of the
+        // config register flips to 1. With a fixed sleep, the previous
+        // conversion was sometimes read — from the OTHER channel after switching
+        // the MUX — and that showed up as ghost spikes of thousands of counts
+        // on silent channels.
         for _ in 0..50 {
             let cfg: u16 = self
                 .i2c
@@ -72,23 +73,23 @@ impl MicrophoneSensor {
         }
 
         let raw = self.i2c.smbus_read_word(REG_CONVERSION).unwrap();
-        // ADS1115 envía big-endian, smbus lee little-endian → swap al leer
+        // ADS1115 sends big-endian, smbus reads little-endian → swap when reading
         raw.swap_bytes() as i16
     }
 
-    /// Amplitud de una ráfaga de muestras. El micro entrega una señal AC
-    /// alrededor de un nivel DC, así que una sola muestra no representa el
-    /// "volumen"; la dispersión de la ráfaga sí crece con el soplido.
+    /// Amplitude of a burst of samples. The mic delivers an AC signal around a
+    /// DC level, so a single sample does not represent the "volume"; the spread
+    /// of the burst does grow with the blow.
     ///
-    /// Es una amplitud ROBUSTA: se ordena la ráfaga y se descartan los 2 valores
-    /// más altos y más bajos, de modo que una muestra espuria (residuos del mux
-    /// del ADS1115) no fabrique miles de cuentas de amplitud fantasma. Un soplido
-    /// real mantiene la señal grande durante muchas muestras y sobrevive al recorte.
+    /// It is a ROBUST amplitude: the burst is sorted and the 2 highest and
+    /// lowest values are discarded, so a spurious sample (ADS1115 mux residue)
+    /// cannot fabricate thousands of counts of ghost amplitude. A real blow
+    /// keeps the signal large across many samples and survives the trimming.
     fn burst_amplitude(&mut self, channel: u8) -> u16 {
         const SAMPLES: usize = 20;
         const TRIM: usize = 2;
 
-        // Descartar la primera conversión tras cambiar de canal (residuos del mux).
+        // Discard the first conversion after switching channels (mux residue).
         let _ = self.read_channel(channel);
 
         let mut buf: [i16; SAMPLES] = [0; SAMPLES];
@@ -99,15 +100,15 @@ impl MicrophoneSensor {
         (buf[SAMPLES - 1 - TRIM] as i32 - buf[TRIM] as i32).clamp(0, u16::MAX as i32) as u16
     }
 
-    /// Mide la actividad del canal (amplitud por encima del suelo de ruido) y la
-    /// guarda en `microphones`. Es el valor que consume el demo para derivar
-    /// dirección e intensidad del viento.
+    /// Measures the channel's activity (amplitude above the noise floor) and
+    /// stores it in `microphones`. This is the value the demo consumes to derive
+    /// wind direction and intensity.
     pub fn read_amplitude(&mut self, channel: u8) -> u16 {
         let ch: usize = channel as usize;
         let amplitude: f32 = self.burst_amplitude(channel) as f32;
 
-        // Adaptación lenta del suelo de ruido: baja rápido (si el ambiente se
-        // calma) y sube muy despacio (para no absorber un soplido sostenido).
+        // Slow noise-floor adaptation: drops quickly (if the environment calms
+        // down) and rises very slowly (so a sustained blow is not absorbed).
         if amplitude < self.baseline[ch] {
             self.baseline[ch] = self.baseline[ch] * 0.9 + amplitude * 0.1;
         } else {

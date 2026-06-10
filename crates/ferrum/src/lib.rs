@@ -1,25 +1,23 @@
-mod camera;
+pub mod assets;
 pub mod config;
-mod hdr;
-mod light;
-mod material;
+mod error;
 pub mod math;
-pub mod models;
-mod pipeline;
-mod resources;
+mod renderer;
 mod structs;
-mod texture;
+
+use wgpu::hal::SurfaceError;
 
 use crate::{
+    assets::{DrawShadow, InstanceRaw, Model, ModelVertex, Vertex},
     config::WindowSize,
     hdr::HdrPipeline,
     light::Light,
-    models::{DrawShadow, InstanceRaw, Model, ModelVertex, Vertex},
     texture::CubeTexture,
+    wind::WindUniform,
 };
 pub use {
+    assets::{Instance, TypeModel},
     cgmath::{Deg, Matrix4, Point3, Quaternion, Rotation3, Vector3, ortho},
-    models::{Instance, TypeModel},
     std::{
         collections::HashMap,
         marker::PhantomData,
@@ -48,19 +46,6 @@ enum Bead<T> {
     Molten(T),
     #[allow(dead_code)]
     Ash,
-}
-
-/// Datos de viento que recibe el vertex shader para animar el follaje.
-///
-/// `direction` es un vector 2D en el plano XZ (suelo) ya normalizado, `intensity`
-/// la fuerza del viento [0, 1] y `time` segundos acumulados para la animación.
-/// Los 4 f32 ocupan exactamente 16 bytes => alineación válida de uniform.
-#[repr(C)]
-#[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct WindUniform {
-    pub direction: [f32; 2],
-    pub intensity: f32,
-    pub time: f32,
 }
 
 pub struct State {
@@ -124,15 +109,21 @@ impl State {
         + 'static,
         window_size: WindowSize,
     ) -> anyhow::Result<Self> {
-        let backend_instance: wgpu::Instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-            #[cfg(target_arch = "wasm32")]
-            backends: wgpu::Backends::GL | wgpu::Backends::BROWSER_WEBGPU,
-            #[cfg(all(not(target_arch = "wasm32"), not(feature = "rpi")))]
-            backends: wgpu::Backends::PRIMARY,
-            #[cfg(all(not(target_arch = "wasm32"), feature = "rpi"))]
-            backends: wgpu::Backends::GL,
-            ..Default::default()
-        });
+        let mut instance_desc: wgpu::InstanceDescriptor =
+            wgpu::InstanceDescriptor::new_without_display_handle();
+        #[cfg(target_arch = "wasm32")]
+        {
+            instance_desc.backends = wgpu::Backends::GL | wgpu::Backends::BROWSER_WEBGPU;
+        }
+        #[cfg(all(not(target_arch = "wasm32"), not(feature = "rpi")))]
+        {
+            instance_desc.backends = wgpu::Backends::PRIMARY;
+        }
+        #[cfg(all(not(target_arch = "wasm32"), feature = "rpi"))]
+        {
+            instance_desc.backends = wgpu::Backends::GL;
+        }
+        let backend_instance: wgpu::Instance = wgpu::Instance::new(instance_desc);
 
         // Surface to be drawn
         let window_surface: Surface = backend_instance.create_surface(target)?;
@@ -339,7 +330,10 @@ impl State {
             let layout: PipelineLayout =
                 device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     label: Some("Sky Pipeline Layout"),
-                    bind_group_layouts: &[&camera_bind_group_layout, &environment_layout],
+                    bind_group_layouts: &[
+                        Some(&camera_bind_group_layout),
+                        Some(&environment_layout),
+                    ],
                     immediate_size: 0,
                 });
             let shader: ShaderModuleDescriptor = wgpu::include_wgsl!("shaders/sky.wgsl");
@@ -355,18 +349,16 @@ impl State {
         };
 
         // Light
-        let light_uniform: light::LightUniform = light::LightUniform {
-            position: [15.0, 0.0, 0.0],
-            color: [7.0, 6.95, 6.85],
-            light_view_proj: [
+        let light_uniform: light::LightUniform = light::LightUniform::new(
+            [15.0, 0.0, 0.0],
+            [7.0, 6.95, 6.85],
+            [
                 [1.0, 0.0, 0.0, 0.0],
                 [0.0, 1.0, 0.0, 0.0],
                 [0.0, 0.0, 1.0, 0.0],
                 [0.0, 0.0, 0.0, 1.0],
             ],
-            _padding: 0,
-            _padding2: 0,
-        };
+        );
 
         let light_buffer: Buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("light_buffer"),
@@ -402,9 +394,9 @@ impl State {
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("light_pipeline_layout"),
                 bind_group_layouts: &[
-                    &camera_bind_group_layout,
-                    &light_bind_group_layout,
-                    &texture_bind_group_layout,
+                    Some(&camera_bind_group_layout),
+                    Some(&light_bind_group_layout),
+                    Some(&texture_bind_group_layout),
                 ],
                 ..Default::default()
             });
@@ -472,7 +464,7 @@ impl State {
         let shadow_pipeline_layout: PipelineLayout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("light_pipeline_layout"),
-                bind_group_layouts: &[&light_bind_group_layout],
+                bind_group_layouts: &[Some(&light_bind_group_layout)],
                 ..Default::default()
             });
 
@@ -500,9 +492,8 @@ impl State {
 
         // Wind
         let wind_uniform: WindUniform = WindUniform {
-            direction: [0.0, 0.0],
-            intensity: 0.0,
-            time: 0.0,
+            intensity: 0.8,
+            ..Default::default()
         };
 
         let wind_buffer: Buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -539,11 +530,11 @@ impl State {
         let pipeline_render_layout: PipelineLayout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 bind_group_layouts: &[
-                    &texture_bind_group_layout,
-                    &camera_bind_group_layout,
-                    &light_bind_group_layout,
-                    &shadow_bind_group_layout,
-                    &wind_bind_group_layout,
+                    Some(&texture_bind_group_layout),
+                    Some(&camera_bind_group_layout),
+                    Some(&light_bind_group_layout),
+                    Some(&shadow_bind_group_layout),
+                    Some(&wind_bind_group_layout),
                 ],
                 label: Some("render_pipeline_layout"),
                 ..Default::default()
@@ -570,8 +561,8 @@ impl State {
                 },
                 depth_stencil: Some(wgpu::DepthStencilState {
                     format: texture::Texture::DEPTH_FORMAT,
-                    depth_write_enabled: true,
-                    depth_compare: wgpu::CompareFunction::Less,
+                    depth_write_enabled: Some(true),
+                    depth_compare: Some(wgpu::CompareFunction::Less),
                     stencil: wgpu::StencilState::default(),
                     bias: wgpu::DepthBiasState::default(),
                 }),
@@ -651,7 +642,22 @@ impl State {
         }
     }
 
-    pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+    pub fn render(&mut self) -> Result<(), SurfaceError> {
+        self.render_with_overlay(&mut |_, _, _, _| {})
+    }
+
+    /// Igual que `render`, pero invoca `overlay` tras el tonemapping HDR con el
+    /// encoder y la vista del frame final, para pintar UI (egui, debug, etc.)
+    /// encima de la escena sin que el motor dependa de ninguna crate de UI.
+    pub fn render_with_overlay(
+        &mut self,
+        overlay: &mut dyn FnMut(
+            &wgpu::Device,
+            &wgpu::Queue,
+            &mut wgpu::CommandEncoder,
+            &wgpu::TextureView,
+        ),
+    ) -> Result<(), SurfaceError> {
         if !self.is_surface_configuration {
             return Ok(());
         }
@@ -714,7 +720,7 @@ impl State {
                     multiview_mask: None,
                 });
 
-            use models::DrawLight;
+            use assets::DrawLight;
             render_pass.set_pipeline(&self.light_render_pipeline);
             for bead in self.light_models.values() {
                 if let Bead::Molten(model) = bead {
@@ -726,7 +732,7 @@ impl State {
                 }
             }
 
-            use models::DrawModel;
+            use assets::DrawModel;
             render_pass.set_pipeline(&self.render_pipeline);
             for bead in self.static_models.values() {
                 if let Bead::Molten(model) = bead {
@@ -748,13 +754,25 @@ impl State {
             render_pass.draw(0..3, 0..1);
         }
 
-        let ouput: SurfaceTexture = self.window_surface.get_current_texture()?;
+        let ouput: SurfaceTexture = match self.window_surface.get_current_texture() {
+            wgpu::CurrentSurfaceTexture::Success(t)
+            | wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
+            // Frame no disponible temporalmente (minimizada, timeout): se salta
+            // el frame sin tratarlo como error.
+            wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded => {
+                return Ok(());
+            }
+            wgpu::CurrentSurfaceTexture::Outdated => return Err(SurfaceError::Outdated),
+            wgpu::CurrentSurfaceTexture::Lost => return Err(SurfaceError::Lost),
+            wgpu::CurrentSurfaceTexture::Validation => return Err(SurfaceError::Validation),
+        };
         let view: TextureView = ouput.texture.create_view(&wgpu::TextureViewDescriptor {
             format: Some(self.config.format.add_srgb_suffix()),
             ..Default::default()
         });
 
         self.hdr.process(&mut encoder, &view);
+        overlay(&self.device, &self.queue, &mut encoder, &view);
         self.queue.submit(std::iter::once(encoder.finish()));
 
         ouput.present();
@@ -762,7 +780,7 @@ impl State {
         Ok(())
     }
 
-    pub fn spawn_model(&mut self, model_desc: models::ModelDesc) -> Ingot<models::Model> {
+    pub fn spawn_model(&mut self, model_desc: assets::ModelDesc) -> Ingot<assets::Model> {
         let id: usize = self.actual_ingot.fetch_add(1, Ordering::SeqCst);
 
         match model_desc.kind {
@@ -776,15 +794,27 @@ impl State {
         let sender: Sender<(usize, Model)> = self.model_sender.clone();
         let path: String = model_desc.path.to_string();
 
+        // La carga es asíncrona y el modelo llega por el canal cuando termina
+        // (Bead::Burning hasta entonces). En nativo: hilo + block_on; en wasm
+        // no hay hilos ni block_on, así que se encola en el event loop del
+        // navegador con spawn_local (el fetch de assets ya es async).
+        let instances: Vec<Instance> = model_desc.instances;
+        let kind: TypeModel = model_desc.kind;
+
+        #[cfg(not(target_arch = "wasm32"))]
         std::thread::spawn(move || {
             let result: Result<Model, anyhow::Error> = pollster::block_on(resources::load_model(
-                &path,
-                &device,
-                &queue,
-                &layout,
-                model_desc.instances,
-                model_desc.kind,
+                &path, &device, &queue, &layout, instances, kind,
             ));
+            if let Ok(model) = result {
+                let _ = sender.send((id, model));
+            }
+        });
+
+        #[cfg(target_arch = "wasm32")]
+        wasm_bindgen_futures::spawn_local(async move {
+            let result: Result<Model, anyhow::Error> =
+                resources::load_model(&path, &device, &queue, &layout, instances, kind).await;
             if let Ok(model) = result {
                 let _ = sender.send((id, model));
             }
@@ -833,16 +863,6 @@ impl State {
             0,
             bytemuck::cast_slice(&[self.camera_uniform]),
         );
-
-        // TODO: Light rotation animation, eliminado solo era para hacer pruebas, en un futuro
-        // utilizar para movimientoi del sol en la demo
-        //let old_position: cgmath::Vector3<f32> = self.light_uniform.position.into();
-        //
-        //self.light_uniform.position = (cgmath::Quaternion::from_axis_angle(
-        //    (0.0, 0.0, 1.0).into(),
-        //    cgmath::Deg(30.0 * dt.as_secs_f32()),
-        //) * old_position)
-        //    .into();
 
         let light_pos: cgmath::Point3<f32> = self.light_uniform.position.into();
 
