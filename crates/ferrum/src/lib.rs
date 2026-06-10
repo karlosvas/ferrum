@@ -50,6 +50,19 @@ enum Bead<T> {
     Ash,
 }
 
+/// Datos de viento que recibe el vertex shader para animar el follaje.
+///
+/// `direction` es un vector 2D en el plano XZ (suelo) ya normalizado, `intensity`
+/// la fuerza del viento [0, 1] y `time` segundos acumulados para la animación.
+/// Los 4 f32 ocupan exactamente 16 bytes => alineación válida de uniform.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct WindUniform {
+    pub direction: [f32; 2],
+    pub intensity: f32,
+    pub time: f32,
+}
+
 pub struct State {
     pub window_surface: wgpu::Surface<'static>,
     pub device: Arc<wgpu::Device>,
@@ -79,6 +92,18 @@ pub struct State {
     pub light_buffer: Buffer,
     pub light_bind_group: wgpu::BindGroup,
     pub light_render_pipeline: wgpu::RenderPipeline,
+    /// Momento del último ajuste de posición de la luz, para calcular el dt del
+    /// suavizado exponencial (independiente del framerate) en `set_object_light_position`.
+    pub light_last_update: web_time::Instant,
+
+    // Wind (animación de follaje en el vertex shader)
+    pub wind_uniform: WindUniform,
+    pub wind_buffer: Buffer,
+    pub wind_bind_group: wgpu::BindGroup,
+    /// Instante del último frame para acumular la fase del viento. `time` no es
+    /// tiempo real: avanza más rápido cuanto mayor es la intensidad, para que un
+    /// soplido fuerte agite las hojas más deprisa además de doblarlas más.
+    pub wind_start: web_time::Instant,
 
     // Shadow
     pub shadow_texture: texture::Texture,
@@ -473,6 +498,43 @@ impl State {
             )
         };
 
+        // Wind
+        let wind_uniform: WindUniform = WindUniform {
+            direction: [0.0, 0.0],
+            intensity: 0.0,
+            time: 0.0,
+        };
+
+        let wind_buffer: Buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("wind_buffer"),
+            contents: bytemuck::cast_slice(&[wind_uniform]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let wind_bind_group_layout: BindGroupLayout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("wind_bind_group_layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            });
+
+        let wind_bind_group: BindGroup = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("wind_bind_group"),
+            layout: &wind_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wind_buffer.as_entire_binding(),
+            }],
+        });
+
         // Render Pipeline
         let pipeline_render_layout: PipelineLayout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -481,6 +543,7 @@ impl State {
                     &camera_bind_group_layout,
                     &light_bind_group_layout,
                     &shadow_bind_group_layout,
+                    &wind_bind_group_layout,
                 ],
                 label: Some("render_pipeline_layout"),
                 ..Default::default()
@@ -560,6 +623,11 @@ impl State {
             light_buffer,
             light_bind_group,
             light_render_pipeline,
+            light_last_update: web_time::Instant::now(),
+            wind_uniform,
+            wind_buffer,
+            wind_bind_group,
+            wind_start: web_time::Instant::now(),
             hdr,
             environment_bind_group,
             sky_pipeline,
@@ -667,6 +735,7 @@ impl State {
                         &self.camera_bind_group,
                         &self.light_bind_group,
                         &self.shadow_bind_group,
+                        &self.wind_bind_group,
                     );
                 }
             }
@@ -731,6 +800,21 @@ impl State {
         Light
     }
 
+    /// Fija el viento que anima el follaje. `direction` es un vector 2D en el
+    /// plano XZ (x = derecha/izquierda, y = adelante/atrás) e `intensity` la
+    /// fuerza [0, 1]. Solo guarda los valores; el `time` y la subida a GPU las
+    /// hace `render` cada frame. Se normaliza la dirección para que la intensidad
+    /// controle por sí sola la magnitud del balanceo.
+    pub fn set_wind(&mut self, direction: [f32; 2], intensity: f32) {
+        let len: f32 = (direction[0] * direction[0] + direction[1] * direction[1]).sqrt();
+        self.wind_uniform.direction = if len > 1e-6 {
+            [direction[0] / len, direction[1] / len]
+        } else {
+            [0.0, 0.0]
+        };
+        self.wind_uniform.intensity = intensity.clamp(0.0, 1.0);
+    }
+
     pub fn evolbe(&mut self) {
         while let Ok((id, model)) = self.model_receiver.try_recv() {
             match model.type_model {
@@ -781,6 +865,22 @@ impl State {
             &self.light_buffer,
             0,
             bytemuck::cast_slice(&[self.light_uniform]),
+        );
+
+        // Avanzar la FASE del viento (la dirección/intensidad las fija el demo
+        // vía `set_wind`) y subir el uniform a la GPU una vez por frame.
+        // La fase se acumula escalada por la intensidad en vez de usar tiempo
+        // real: soplar fuerte agita las hojas más rápido, no solo más lejos.
+        // Acumular (en vez de multiplicar el tiempo) evita saltos de fase
+        // cuando la intensidad cambia entre frames.
+        let dt: f32 = self.wind_start.elapsed().as_secs_f32();
+        self.wind_start = web_time::Instant::now();
+        let speed: f32 = 0.6 + self.wind_uniform.intensity * 2.4;
+        self.wind_uniform.time += dt * speed;
+        self.queue.write_buffer(
+            &self.wind_buffer,
+            0,
+            bytemuck::cast_slice(&[self.wind_uniform]),
         );
     }
 }

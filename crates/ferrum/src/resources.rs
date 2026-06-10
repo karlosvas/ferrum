@@ -201,22 +201,27 @@ pub async fn load_model(
                 .to_string()
         };
 
-        let full_normal_path: String = if m.normal_texture.is_empty() {
-            full_mtl_path.clone()
-        } else if parent_path.is_empty() {
-            m.normal_texture.clone()
-        } else {
-            std::path::Path::new(&parent_path)
-                .join(&m.normal_texture)
-                .to_str()
-                .unwrap()
-                .to_string()
-        };
-
         let diffuse_texture: texture::Texture =
             load_texture(&full_mtl_path, device, queue, false).await?;
-        let normal_texture: texture::Texture =
-            load_texture(&full_normal_path, device, queue, true).await?;
+
+        // Si el material no define normal map, usamos una normal plana por
+        // defecto. Antes se caía a la textura de color, que interpretada como
+        // mapa de normales daba direcciones erróneas y la superficie (p. ej. el
+        // suelo) quedaba sin iluminar.
+        let normal_texture: texture::Texture = if m.normal_texture.is_empty() {
+            texture::Texture::default_normal(device, queue)
+        } else {
+            let full_normal_path: String = if parent_path.is_empty() {
+                m.normal_texture.clone()
+            } else {
+                std::path::Path::new(&parent_path)
+                    .join(&m.normal_texture)
+                    .to_str()
+                    .unwrap()
+                    .to_string()
+            };
+            load_texture(&full_normal_path, device, queue, true).await?
+        };
 
         let bind_group: BindGroup = device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout,

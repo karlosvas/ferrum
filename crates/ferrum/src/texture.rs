@@ -147,6 +147,59 @@ impl Texture {
         })
     }
 
+    /// Crea una normal map plana de 1x1 con el valor `(128, 128, 255)`, que
+    /// decodifica a `(0, 0, 1)` en espacio tangente: una normal perpendicular a
+    /// la superficie, sin relieve.
+    ///
+    /// Se usa como respaldo para materiales sin normal map (p. ej. el suelo). Sin
+    /// esto, el `load_model` caía a la textura de color como si fuera de normales,
+    /// produciendo direcciones erróneas que dejaban la superficie sin iluminar.
+    pub fn default_normal(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
+        let texture: wgpu::Texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("default_normal"),
+            size: Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+
+        queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &[128u8, 128, 255, 255],
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(4),
+                rows_per_image: Some(1),
+            },
+            Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
+        );
+
+        let view: TextureView = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let sampler: Sampler = device.create_sampler(&wgpu::SamplerDescriptor::default());
+
+        Self {
+            texture,
+            view,
+            sampler,
+        }
+    }
+
     pub fn create_depth_texture(
         device: &wgpu::Device,
         config: &wgpu::SurfaceConfiguration,

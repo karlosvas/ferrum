@@ -68,6 +68,7 @@ pub trait DrawModel<'a> {
         camera_bind_group: &'a wgpu::BindGroup,
         light_bind_group: &'a wgpu::BindGroup,
         shadow_bind_group: &'a wgpu::BindGroup,
+        wind_bind_group: &'a wgpu::BindGroup,
     );
 
     fn draw_model(
@@ -76,6 +77,7 @@ pub trait DrawModel<'a> {
         camera_bind_group: &'a wgpu::BindGroup,
         light_bind_group: &'a wgpu::BindGroup,
         shadow_bind_group: &'a wgpu::BindGroup,
+        wind_bind_group: &'a wgpu::BindGroup,
     );
 }
 
@@ -92,6 +94,7 @@ where
         camera_bind_group: &'b wgpu::BindGroup,
         light_bind_group: &'a wgpu::BindGroup,
         shadow_bind_group: &'a wgpu::BindGroup,
+        wind_bind_group: &'a wgpu::BindGroup,
     ) {
         self.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
         self.set_vertex_buffer(1, instance_buffer.slice(..));
@@ -100,6 +103,7 @@ where
         self.set_bind_group(1, camera_bind_group, &[]);
         self.set_bind_group(2, light_bind_group, &[]);
         self.set_bind_group(3, shadow_bind_group, &[]);
+        self.set_bind_group(4, wind_bind_group, &[]);
         self.draw_indexed(0..mesh.indices, 0, instances);
     }
 
@@ -109,6 +113,7 @@ where
         camera_bind_group: &'b wgpu::BindGroup,
         light_bind_group: &'a wgpu::BindGroup,
         shadow_bind_group: &'a wgpu::BindGroup,
+        wind_bind_group: &'a wgpu::BindGroup,
     ) {
         for mesh in &model.meshes {
             let material: &material::Material = &model.materials[mesh.material];
@@ -120,6 +125,7 @@ where
                 camera_bind_group,
                 light_bind_group,
                 shadow_bind_group,
+                wind_bind_group,
             );
         }
     }
@@ -131,6 +137,9 @@ where
 pub struct InstanceRaw {
     pub model: [[f32; 4]; 4],
     pub normals: [[f32; 3]; 3],
+    /// Cuánto le afecta el viento a este modelo en el vertex shader: 1.0 follaje,
+    /// 0.0 estático. Permite que solo la planta se balancee y el suelo no.
+    pub wind_weight: f32,
 }
 
 impl InstanceRaw {
@@ -176,6 +185,11 @@ impl InstanceRaw {
                     offset: mem::size_of::<[f32; 22]>() as wgpu::BufferAddress,
                     shader_location: 12,
                 },
+                wgpu::VertexAttribute {
+                    format: wgpu::VertexFormat::Float32,
+                    offset: mem::size_of::<[f32; 25]>() as wgpu::BufferAddress,
+                    shader_location: 13,
+                },
             ],
         }
     }
@@ -185,6 +199,8 @@ pub struct Instance {
     pub position: cgmath::Vector3<f32>,
     pub rotation: cgmath::Quaternion<f32>,
     pub scale: cgmath::Vector3<f32>,
+    /// 1.0 = el viento mueve este modelo (follaje), 0.0 = estático. Por defecto 0.
+    pub wind_weight: f32,
 }
 
 impl Instance {
@@ -197,7 +213,15 @@ impl Instance {
             position,
             rotation,
             scale,
+            wind_weight: 0.0,
         }
+    }
+
+    /// Marca esta instancia como afectada por el viento (follaje). Encadénalo tras
+    /// `new`/`default`: `Instance::new(..).with_wind(1.0)`.
+    pub fn with_wind(mut self, weight: f32) -> Self {
+        self.wind_weight = weight;
+        self
     }
 
     pub fn to_raw(&self) -> InstanceRaw {
@@ -211,6 +235,7 @@ impl Instance {
         InstanceRaw {
             model: (translation * rotation * scale).into(),
             normals: normals.into(),
+            wind_weight: self.wind_weight,
         }
     }
 }
@@ -221,6 +246,7 @@ impl Default for Instance {
             position: Vector3::zero(),
             rotation: Quaternion::one(),
             scale: Vector3::new(1.0, 1.0, 1.0),
+            wind_weight: 0.0,
         }
     }
 }

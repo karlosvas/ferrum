@@ -7,9 +7,13 @@ pub struct MicReading {
     pub raw: u16,
 }
 
-#[derive(Serialize, Deserialize, Default, Debug)]
+/// Posición 3D estimada de la fuente de luz a partir de la imagen de la cámara.
+/// Se obtiene proyectando el píxel más brillante al espacio del mundo.
+#[derive(Serialize, Deserialize, Default, Debug, Clone, Copy)]
 pub struct Camera3Wide {
-    angule_of_max_light: f64,
+    pub x: f64,
+    pub y: f64,
+    pub z: f64,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

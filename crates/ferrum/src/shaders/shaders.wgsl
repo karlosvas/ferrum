@@ -14,6 +14,14 @@ var s_normal: sampler;
 var shadow_map: texture_depth_2d;
 @group(3) @binding(1)
 var shadow_sampler: sampler_comparison;
+@group(4) @binding(0)
+var<uniform> wind: Wind;
+
+struct Wind {
+    direction: vec2<f32>, // plano XZ, normalizado
+    intensity: f32,       // [0, 1]
+    time: f32,            // segundos acumulados
+};
 
 struct CameraUniform {
     view_pos: vec4<f32>,
@@ -43,6 +51,7 @@ struct VertexInput {
     @location(10) normal_matrix_0: vec3<f32>,
     @location(11) normal_matrix_1: vec3<f32>,
     @location(12) normal_matrix_2: vec3<f32>,
+    @location(13) wind_weight: f32,
 }
 
 struct VertexOutput {
@@ -72,7 +81,31 @@ fn vs_main(
     ));
 
     let model_matrix = mat4x4<f32>(model.model_matrix_0, model.model_matrix_1, model.model_matrix_2, model.model_matrix_3);
-    let world_position = model_matrix * vec4(model.position, 1.0);
+
+    // --- Viento: desplazamiento del follaje en el vertex shader ---
+    // Solo afecta a instancias marcadas como follaje (model.wind_weight), porque
+    // el suelo también tiene altura y no debe balancearse.
+    // El peso por altura (normalizado) hace que las puntas se muevan más que la
+    // base. REFERENCE_HEIGHT ≈ altura del modelo de planta en espacio de objeto.
+    let sway_amplitude = 0.5; // cuánto se doblan las hojas (en unidades de mundo)
+    let reference_height = 6.0;
+    var local_pos = model.position;
+    let h = clamp(max(local_pos.y, 0.0) / reference_height, 0.0, 1.0);
+    let height_weight = h * h;
+    // Fase distinta por vértice para que no se muevan todas a la vez.
+    let phase = local_pos.x * 0.7 + local_pos.z * 0.7;
+    // Inclinación constante (las hojas se DOBLAN alejándose del soplido) más una
+    // ondulación y un flutter; siempre positivo para que el movimiento sea
+    // direccional y no un vaivén simétrico.
+    let sway = 0.65
+             + sin(wind.time * 2.3 + phase) * 0.25         // ondulación lenta
+             + sin(wind.time * 5.7 + phase * 1.7) * 0.10;  // flutter rápido
+    let displacement = wind.direction
+        * (sway * wind.intensity * height_weight * model.wind_weight * sway_amplitude);
+    local_pos.x += displacement.x;
+    local_pos.z += displacement.y;
+
+    let world_position = model_matrix * vec4(local_pos, 1.0);
 
     var out: VertexOutput;
     out.clip_position = camera.view_proj * world_position;

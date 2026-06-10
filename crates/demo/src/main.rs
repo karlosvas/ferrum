@@ -9,11 +9,9 @@ use {
         response::IntoResponse,
         routing::get,
     },
+    cgmath::{InnerSpace, Vector2},
     demo::{App, config::AppConfig},
-    ferrum::{
-        Deg, Instance, Quaternion, Rotation3, TypeModel, Vector3, math::TransformDelta,
-        models::ModelDesc,
-    },
+    ferrum::{Deg, Instance, Quaternion, Rotation3, TypeModel, Vector3, models::ModelDesc},
     shared::structs::RpiDemo,
     std::{
         cell::RefCell, collections::HashMap, rc::Rc, result::Result::Ok, sync::mpsc, time::Duration,
@@ -42,9 +40,12 @@ fn main() -> anyhow::Result<(), Error> {
     let app_config: AppConfig = AppConfig::new(Some(ferrum::PhysicalSize::new(500, 500)));
 
     // Estado que persiste entre frames (UpdateFn es FnMut)
-    let mut light_x: f32 = 0.0; // posición acumulada en X
-    let mut dir: f32 = 1.0; // sentido del movimiento (+1 / -1)
     let mut last_lux: f32 = 0.0; // último lux recibido del sensor
+    let mut light_pos: Vector3<f32> = Vector3::new(0.0, 0.0, 0.0); // última posición de la cámara
+    let mut wind_target: Vector2<f32> = Vector2::new(0.0, 0.0); // viento objetivo (de los micros)
+    let mut wind_current: Vector2<f32> = Vector2::new(0.0, 0.0); // viento suavizado por frame
+    let mut wind_last_t: web_time::Instant = web_time::Instant::now();
+    let mut silent_ticks: u32 = 0; // paquetes seguidos de silencio (para no cortar el viento entre respiraciones)
 
     App::new(app_config)
         .ferrum_setup(move |state| setup(state, &demo_models))
@@ -53,9 +54,12 @@ fn main() -> anyhow::Result<(), Error> {
                 state,
                 &demo_models_update,
                 &rx,
-                &mut light_x,
-                &mut dir,
                 &mut last_lux,
+                &mut light_pos,
+                &mut wind_target,
+                &mut wind_current,
+                &mut wind_last_t,
+                &mut silent_ticks,
             )
         })
         .run()
@@ -65,42 +69,132 @@ fn update(
     state: &mut ferrum::State,
     demo_models: &Rc<RefCell<HashMap<&str, usize>>>,
     rx: &mpsc::Receiver<RpiDemo>,
-    light_x: &mut f32,
-    dir: &mut f32,
     last_lux: &mut f32,
+    light_pos: &mut Vector3<f32>,
+    wind_target: &mut Vector2<f32>,
+    wind_current: &mut Vector2<f32>,
+    wind_last_t: &mut web_time::Instant,
+    silent_ticks: &mut u32,
 ) {
     let demo_models = demo_models.borrow_mut();
 
-    let now: web_time::Instant = web_time::Instant::now();
-    let dt: web_time::Duration = now - state.last_render_time;
-    state.last_render_time = now;
+    state.last_render_time = web_time::Instant::now();
 
+    // Consumir todos los datos pendientes y quedarnos con el más reciente.
     while let Ok(new_data) = rx.try_recv() {
         let light: SensorReading = new_data.light;
         *last_lux = light.lux;
+        *light_pos = Vector3::new(
+            new_data.camera.x as f32,
+            new_data.camera.y as f32,
+            new_data.camera.z as f32,
+        );
+
+        // Viento a partir de los 4 micrófonos. La RPi ya envía la actividad por
+        // encima del suelo de ruido de cada canal:
+        //   canal 1=adelante, 2=derecha, 3=atrás, 4=izquierda  →  índices 0..3.
+        //
+        // Soplar es acústicamente ruidoso: el micro soplado satura (~32000) pero
+        // los vecinos también suben (2000-6000), así que una resta diferencial
+        // da direcciones caóticas. En su lugar: WINNER-TAKE-ALL con dominancia.
+        // Solo cambia la dirección si un micro supera claramente al segundo; si
+        // la lectura es ambigua se mantiene el viento anterior (sin bandazos).
+        //
+        // El aire viaja DESDE el micro ganador HACIA la planta: soplar el de la
+        // derecha empuja las hojas hacia la izquierda. Si en pantalla sale
+        // invertido (depende de la orientación de tu escena), invierte signos.
+        const NOISE_GATE: f32 = 1500.0; // por debajo de esto, silencio
+        const DOMINANCE: f32 = 1.5; // el ganador debe superar al 2º por este factor
+        // Amplitud a la que el balanceo es máximo. Un soplido fuerte satura el
+        // ADC en ~33000; antes estaba en 8000 y CUALQUIER soplido llegaba al
+        // máximo — por eso fuerte y suave se veían igual de intensos.
+        const MAX_RAW: f32 = 30000.0;
+        // Soplar no es continuo: entre respiraciones hay 1-3 paquetes a cero.
+        // En vez de apagar el viento al primer silencio, se mantiene el último
+        // objetivo durante unos paquetes para que la ráfaga no parpadee.
+        const SILENT_HOLD: u32 = 4;
+        let m = &new_data.microphone;
+        let vals: [f32; 4] = [
+            m[0].raw as f32,
+            m[1].raw as f32,
+            m[2].raw as f32,
+            m[3].raw as f32,
+        ];
+
+        let mut win: usize = 0;
+        for (i, v) in vals.iter().enumerate() {
+            if *v > vals[win] {
+                win = i;
+            }
+        }
+        let second: f32 = vals
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| *i != win)
+            .map(|(_, v)| *v)
+            .fold(0.0, f32::max);
+
+        let detected: bool = vals[win] >= NOISE_GATE && vals[win] > second * DOMINANCE;
+        if detected {
+            *silent_ticks = 0;
+            // Dirección opuesta al micro ganador (el aire empuja hacia el otro lado).
+            let dir: Vector2<f32> = match win {
+                0 => Vector2::new(0.0, -1.0), // adelante → empuja hacia atrás
+                1 => Vector2::new(-1.0, 0.0), // derecha → empuja hacia la izquierda
+                2 => Vector2::new(0.0, 1.0),  // atrás → empuja hacia adelante
+                _ => Vector2::new(1.0, 0.0),  // izquierda → empuja hacia la derecha
+            };
+            // Curva sqrt: los soplidos suaves se notan (0.12 lineal → 0.35) y
+            // solo los fuertes de verdad llegan a 1.0.
+            let strength: f32 = ((vals[win] - NOISE_GATE) / (MAX_RAW - NOISE_GATE))
+                .clamp(0.0, 1.0)
+                .sqrt();
+            *wind_target = dir * strength;
+        } else if vals[win] < NOISE_GATE {
+            *silent_ticks += 1;
+            if *silent_ticks >= SILENT_HOLD {
+                // Silencio sostenido: el viento se apaga de verdad.
+                *wind_target = Vector2::new(0.0, 0.0);
+            }
+        }
+        // Ambiguo (ganador sin dominancia clara): conservar el objetivo anterior.
+
+        const MIC_NAMES: [&str; 4] = ["adelante", "derecha", "atras", "izquierda"];
+        println!(
+            "[sensors] lux={:.1} mics=[{},{},{},{}] soplado={} wind_target=({:.2},{:.2})",
+            light.lux,
+            m[0].raw,
+            m[1].raw,
+            m[2].raw,
+            m[3].raw,
+            if detected { MIC_NAMES[win] } else { "-" },
+            wind_target.x,
+            wind_target.y
+        );
     }
 
-    const SPEED: f32 = 5.0;
-    let dx: f32 = *dir * SPEED * dt.as_secs_f32();
-    *light_x += dx;
-    if *light_x >= 10.0 {
-        *light_x = 10.0;
-        *dir = -1.0;
-    } else if *light_x <= 0.0 {
-        *light_x = 0.0;
-        *dir = 1.0;
-    }
-
-    let transform_delta: TransformDelta = TransformDelta::new(
-        Vector3::new(dx, 0.0, 0.0),
-        Quaternion::new(0.0, 0.0, 0.0, 0.0),
-        Vector3::new(0.0, 0.0, 0.0),
+    // Suavizado del viento por frame (independiente de la cadencia de paquetes):
+    // ataque rápido al soplar y caída lenta al parar, como una ráfaga real.
+    let now: web_time::Instant = web_time::Instant::now();
+    let dt: f32 = (now - *wind_last_t).as_secs_f32();
+    *wind_last_t = now;
+    let tc: f32 = if wind_target.magnitude() > wind_current.magnitude() {
+        0.15 // ataque
+    } else {
+        0.6 // caída
+    };
+    let factor: f32 = 1.0 - (-dt / tc).exp();
+    *wind_current += (*wind_target - *wind_current) * factor;
+    state.set_wind(
+        [wind_current.x, wind_current.y],
+        wind_current.magnitude().clamp(0.0, 1.0),
     );
 
     if let Some(light_id) = demo_models.get("venus") {
+        // Opción B: posición ABSOLUTA proporcionada por la cámara de la RPi.
         state
             .light_handle()
-            .move_flare_object_light(state, light_id, transform_delta, *last_lux);
+            .set_object_light_position(state, light_id, *light_pos, *last_lux);
     } else {
         log::error!("Invalid ID");
     };
@@ -111,11 +205,14 @@ fn setup(state: &mut ferrum::State, demo_models: &Rc<RefCell<HashMap<&str, usize
 
     let plant: ModelDesc = ModelDesc::new(
         "plant/plant.obj",
-        vec![Instance::new(
-            Vector3::new(0.0, 0.0, 0.0),
-            Quaternion::from_angle_y(Deg(0.0)),
-            Vector3::new(1.0, 1.0, 1.0),
-        )],
+        vec![
+            Instance::new(
+                Vector3::new(0.0, 0.0, 0.0),
+                Quaternion::from_angle_y(Deg(0.0)),
+                Vector3::new(1.0, 1.0, 1.0),
+            )
+            .with_wind(1.0), // marca la planta como follaje (se mueve con el viento)
+        ],
         TypeModel::StaticObj,
     );
 
