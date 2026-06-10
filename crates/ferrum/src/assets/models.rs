@@ -1,6 +1,6 @@
 use cgmath::{Matrix3, Matrix4, One, Quaternion, Vector3, Zero};
 
-use crate::{material, structs};
+use crate::renderer;
 
 pub trait Vertex {
     fn desc() -> wgpu::VertexBufferLayout<'static>;
@@ -58,11 +58,12 @@ impl Vertex for ModelVertex {
         }
     }
 }
+
 pub trait DrawModel<'a> {
     fn draw_mesh(
         &mut self,
-        mesh: &'a structs::Mesh,
-        material: &'a material::Material,
+        mesh: &'a renderer::Mesh,
+        material: &'a renderer::Material,
         instances: std::ops::Range<u32>,
         instance_buffer: &'a wgpu::Buffer,
         camera_bind_group: &'a wgpu::BindGroup,
@@ -87,8 +88,8 @@ where
 {
     fn draw_mesh(
         &mut self,
-        mesh: &'b structs::Mesh,
-        material: &'b material::Material,
+        mesh: &'b renderer::Mesh,
+        material: &'b renderer::Material,
         instances: std::ops::Range<u32>,
         instance_buffer: &'a wgpu::Buffer,
         camera_bind_group: &'b wgpu::BindGroup,
@@ -116,7 +117,7 @@ where
         wind_bind_group: &'a wgpu::BindGroup,
     ) {
         for mesh in &model.meshes {
-            let material: &material::Material = &model.materials[mesh.material];
+            let material: &renderer::Material = &model.materials[mesh.material];
             self.draw_mesh(
                 mesh,
                 material,
@@ -137,8 +138,6 @@ where
 pub struct InstanceRaw {
     pub model: [[f32; 4]; 4],
     pub normals: [[f32; 3]; 3],
-    /// Cuánto le afecta el viento a este modelo en el vertex shader: 1.0 follaje,
-    /// 0.0 estático. Permite que solo la planta se balancee y el suelo no.
     pub wind_weight: f32,
 }
 
@@ -199,7 +198,6 @@ pub struct Instance {
     pub position: cgmath::Vector3<f32>,
     pub rotation: cgmath::Quaternion<f32>,
     pub scale: cgmath::Vector3<f32>,
-    /// 1.0 = el viento mueve este modelo (follaje), 0.0 = estático. Por defecto 0.
     pub wind_weight: f32,
 }
 
@@ -217,8 +215,6 @@ impl Instance {
         }
     }
 
-    /// Marca esta instancia como afectada por el viento (follaje). Encadénalo tras
-    /// `new`/`default`: `Instance::new(..).with_wind(1.0)`.
     pub fn with_wind(mut self, weight: f32) -> Self {
         self.wind_weight = weight;
         self
@@ -271,7 +267,7 @@ where
         light_bind_group: &'b wgpu::BindGroup,
     ) {
         for mesh in &model.meshes {
-            let material: &material::Material = &model.materials[mesh.material];
+            let material: &renderer::Material = &model.materials[mesh.material];
             self.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
             self.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
             self.set_bind_group(0, camera_bind_group, &[]);
@@ -302,8 +298,8 @@ where
 }
 
 pub struct Model {
-    pub meshes: Vec<structs::Mesh>,
-    pub materials: Vec<material::Material>,
+    pub meshes: Vec<renderer::Mesh>,
+    pub materials: Vec<renderer::Material>,
     pub instances: Vec<Instance>,
     pub instance_buffer: wgpu::Buffer,
     pub type_model: TypeModel,

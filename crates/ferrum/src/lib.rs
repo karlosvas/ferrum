@@ -3,21 +3,20 @@ pub mod config;
 mod error;
 pub mod math;
 mod renderer;
-mod structs;
-
-use wgpu::hal::SurfaceError;
+mod scene;
 
 use crate::{
     assets::{DrawShadow, InstanceRaw, Model, ModelVertex, Vertex},
     config::WindowSize,
-    hdr::HdrPipeline,
-    light::Light,
-    texture::CubeTexture,
-    wind::WindUniform,
+    renderer::CubeTexture,
+    renderer::HdrPipeline,
+    scene::Light,
+    scene::WindUniform,
 };
 pub use {
     assets::{Instance, TypeModel},
     cgmath::{Deg, Matrix4, Point3, Quaternion, Rotation3, Vector3, ortho},
+    error::SurfaceError,
     std::{
         collections::HashMap,
         marker::PhantomData,
@@ -55,12 +54,11 @@ pub struct State {
     pub config: wgpu::SurfaceConfiguration,
     pub is_surface_configuration: bool,
     pub render_pipeline: wgpu::RenderPipeline,
-    pub camera: camera::Camera,
-    pub camera_uniform: camera::CameraUniform,
+    pub camera: renderer::Camera,
+    pub camera_uniform: renderer::CameraUniform,
     pub camera_buffer: wgpu::Buffer,
     pub camera_bind_group: wgpu::BindGroup,
-    pub camera_controller: camera::CameraController,
-
+    pub camera_controller: renderer::CameraController,
     // Models
     static_models: HashMap<usize, Bead<Model>>,
     light_models: HashMap<usize, Bead<Model>>,
@@ -68,35 +66,30 @@ pub struct State {
     model_sender: mpsc::Sender<(usize, Model)>,
     model_receiver: mpsc::Receiver<(usize, Model)>,
     pub texture_bind_group_layout: Arc<wgpu::BindGroupLayout>,
-
     pub last_render_time: web_time::Instant,
-    pub depth_texture: texture::Texture,
-
+    pub depth_texture: renderer::Texture,
     // Light
-    pub light_uniform: light::LightUniform,
+    pub light_uniform: scene::LightUniform,
     pub light_buffer: Buffer,
     pub light_bind_group: wgpu::BindGroup,
     pub light_render_pipeline: wgpu::RenderPipeline,
-    /// Momento del último ajuste de posición de la luz, para calcular el dt del
-    /// suavizado exponencial (independiente del framerate) en `set_object_light_position`.
     pub light_last_update: web_time::Instant,
 
-    // Wind (animación de follaje en el vertex shader)
+    // Wind
     pub wind_uniform: WindUniform,
     pub wind_buffer: Buffer,
     pub wind_bind_group: wgpu::BindGroup,
+    /// Instant of last frame to wind accumulate wind, because strog soplido agite and doblarlas las hojas more faster
     /// Instante del último frame para acumular la fase del viento. `time` no es
     /// tiempo real: avanza más rápido cuanto mayor es la intensidad, para que un
     /// soplido fuerte agite las hojas más deprisa además de doblarlas más.
     pub wind_start: web_time::Instant,
-
     // Shadow
-    pub shadow_texture: texture::Texture,
+    pub shadow_texture: renderer::Texture,
     pub shadow_bind_group: wgpu::BindGroup,
     pub shadow_render_pipeline: wgpu::RenderPipeline,
-
     // HDR
-    pub hdr: hdr::HdrPipeline,
+    pub hdr: renderer::HdrPipeline,
     pub environment_bind_group: wgpu::BindGroup,
     pub sky_pipeline: wgpu::RenderPipeline,
 }
@@ -142,8 +135,7 @@ impl State {
             .request_device(&wgpu::DeviceDescriptor {
                 label: None,
                 // The engine uses no optional features. all_webgpu_mask() would demand
-                // every WebGPU feature as required — including texture-compression-astc,
-                // which desktop GPUs (e.g. AMD Vega) don't support, so requestDevice fails.
+                // every WebGPU feature as required,
                 required_features: wgpu::Features::empty(),
                 // The engine requires WebGPU (compute shader for the HDR cubemap) and never
                 // runs on WebGL2, so use the adapter's real limits on every target.
@@ -227,7 +219,7 @@ impl State {
             device.create_shader_module(wgpu::include_wgsl!("shaders/shaders.wgsl"));
 
         // Camera
-        let camera: camera::Camera = camera::Camera {
+        let camera: renderer::Camera = renderer::Camera {
             eye: (0.0, 4.0, 10.0).into(),
             target: (0.0, 3.0, 0.0).into(),
             up: cgmath::Vector3::unit_y(),
@@ -253,16 +245,16 @@ impl State {
             });
 
         let (camera_bind_group, camera_buffer, camera_controller, camera_uniform) =
-            camera::Camera::build_camera_setup(&camera, &device, &camera_bind_group_layout);
+            renderer::Camera::build_camera_setup(&camera, &device, &camera_bind_group_layout);
 
         // Deth texture
-        let depth_texture: texture::Texture =
-            texture::Texture::create_depth_texture(&device, &config, "depth_texture");
+        let depth_texture: renderer::Texture =
+            renderer::Texture::create_depth_texture(&device, &config, "depth_texture");
 
         // Sky
-        let hdr: HdrPipeline = hdr::HdrPipeline::new(&device, &config);
+        let hdr: HdrPipeline = renderer::HdrPipeline::new(&device, &config);
 
-        let hdr_loader: hdr::HdrLoader = hdr::HdrLoader::new(&device);
+        let hdr_loader: renderer::HdrLoader = renderer::HdrLoader::new(&device);
 
         // Web caps max_texture_dimension_2d at 8192 and wasm32 has a 4 GiB address
         // space, so the 16K equirectangular (16384px, ~2 GiB decoded) cannot be
@@ -272,16 +264,16 @@ impl State {
         #[cfg(not(target_arch = "wasm32"))]
         let sky_file: &str = "exr/NightSkyHDRI014_16K_HDR.exr";
 
-        let sky_bytes: Vec<u8> = resources::load_binary(sky_file).await?;
+        let sky_bytes: Vec<u8> = assets::load_binary(sky_file).await?;
 
         let sky_texture: CubeTexture = hdr_loader.from_equirectangular_bytes(
             &device,
             &queue,
             &sky_bytes,
             if sky_file.ends_with(".exr") {
-                hdr::SkyFormat::Exr
+                renderer::SkyFormat::Exr
             } else {
-                hdr::SkyFormat::Hdr
+                renderer::SkyFormat::Hdr
             },
             None,
             Some("sky_texture"),
@@ -337,11 +329,11 @@ impl State {
                     immediate_size: 0,
                 });
             let shader: ShaderModuleDescriptor = wgpu::include_wgsl!("shaders/sky.wgsl");
-            pipeline::create_render_pipeline(
+            renderer::create_render_pipeline(
                 &device,
                 &layout,
                 hdr.format(),
-                Some(texture::Texture::DEPTH_FORMAT),
+                Some(renderer::Texture::DEPTH_FORMAT),
                 &[],
                 wgpu::PrimitiveTopology::TriangleList,
                 shader,
@@ -349,7 +341,7 @@ impl State {
         };
 
         // Light
-        let light_uniform: light::LightUniform = light::LightUniform::new(
+        let light_uniform: scene::LightUniform = scene::LightUniform::new(
             [15.0, 0.0, 0.0],
             [7.0, 6.95, 6.85],
             [
@@ -407,11 +399,11 @@ impl State {
                 source: wgpu::ShaderSource::Wgsl(include_str!("shaders/light.wgsl").into()),
             };
 
-            light::LightUniform::create_render_pipeline(
+            scene::LightUniform::create_render_pipeline(
                 &device,
                 &light_pipeline_layout,
                 Some(hdr.format()),
-                Some(texture::Texture::DEPTH_FORMAT),
+                Some(renderer::Texture::DEPTH_FORMAT),
                 &[ModelVertex::desc()],
                 normal_shader,
                 Some(wgpu::Face::Back),
@@ -420,8 +412,8 @@ impl State {
         };
 
         // Shadow
-        let shadow_texture: texture::Texture =
-            texture::Texture::create_shadow_map(&device, 2048, "shadow_texture");
+        let shadow_texture: renderer::Texture =
+            renderer::Texture::create_shadow_map(&device, 2048, "shadow_texture");
 
         let shadow_bind_group_layout: BindGroupLayout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -474,11 +466,11 @@ impl State {
                 source: wgpu::ShaderSource::Wgsl(include_str!("shaders/shadow.wgsl").into()),
             };
 
-            light::LightUniform::create_render_pipeline(
+            scene::LightUniform::create_render_pipeline(
                 &device,
                 &shadow_pipeline_layout,
                 None,
-                Some(texture::Texture::DEPTH_FORMAT),
+                Some(renderer::Texture::DEPTH_FORMAT),
                 &[ModelVertex::desc(), InstanceRaw::desc()],
                 normal_shader,
                 None, // no culling: geometry blocks light from both sides
@@ -560,7 +552,7 @@ impl State {
                     conservative: false,
                 },
                 depth_stencil: Some(wgpu::DepthStencilState {
-                    format: texture::Texture::DEPTH_FORMAT,
+                    format: renderer::Texture::DEPTH_FORMAT,
                     depth_write_enabled: Some(true),
                     depth_compare: Some(wgpu::CompareFunction::Less),
                     stencil: wgpu::StencilState::default(),
@@ -634,8 +626,11 @@ impl State {
 
             self.camera.aspect = self.config.width as f32 / self.config.height as f32;
 
-            self.depth_texture =
-                texture::Texture::create_depth_texture(&self.device, &self.config, "depth_texture");
+            self.depth_texture = renderer::Texture::create_depth_texture(
+                &self.device,
+                &self.config,
+                "depth_texture",
+            );
 
             self.hdr.resize(&self.device, width, height);
             self.is_surface_configuration = true;
@@ -803,7 +798,7 @@ impl State {
 
         #[cfg(not(target_arch = "wasm32"))]
         std::thread::spawn(move || {
-            let result: Result<Model, anyhow::Error> = pollster::block_on(resources::load_model(
+            let result: Result<Model, anyhow::Error> = pollster::block_on(assets::load_model(
                 &path, &device, &queue, &layout, instances, kind,
             ));
             if let Ok(model) = result {

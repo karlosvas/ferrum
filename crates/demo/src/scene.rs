@@ -5,7 +5,10 @@ use {
         ui::{UiControls, control_panel},
     },
     cgmath::{InnerSpace, Vector2},
-    ferrum::{Deg, Instance, Quaternion, Rotation3, TypeModel, Vector3, models::ModelDesc},
+    ferrum::{
+        Deg, Instance, Quaternion, Rotation3, TypeModel, Vector3,
+        assets::{ModelDesc, models},
+    },
     shared::structs::RpiDemo,
     std::{cell::RefCell, collections::HashMap, rc::Rc, sync::mpsc},
     tsl2591_rs::driver::SensorReading,
@@ -293,7 +296,7 @@ fn setup(state: &mut ferrum::State, demo_models: &Rc<RefCell<HashMap<&str, usize
         TypeModel::StaticObj,
     );
 
-    let ingot: ferrum::Ingot<ferrum::models::Model> = state.spawn_model(plant);
+    let ingot: ferrum::Ingot<models::Model> = state.spawn_model(plant);
     demo_models.insert("plant", ingot.id);
 
     let floor: ModelDesc = ModelDesc::new(
@@ -302,7 +305,7 @@ fn setup(state: &mut ferrum::State, demo_models: &Rc<RefCell<HashMap<&str, usize
         TypeModel::StaticObj,
     );
 
-    let ingot: ferrum::Ingot<ferrum::models::Model> = state.spawn_model(floor);
+    let ingot: ferrum::Ingot<models::Model> = state.spawn_model(floor);
     demo_models.insert("floor", ingot.id);
 
     let venus: ModelDesc = ModelDesc::new(
@@ -311,6 +314,6 @@ fn setup(state: &mut ferrum::State, demo_models: &Rc<RefCell<HashMap<&str, usize
         TypeModel::PointOfLight,
     );
 
-    let ingot: ferrum::Ingot<ferrum::models::Model> = state.spawn_model(venus);
+    let ingot: ferrum::Ingot<models::Model> = state.spawn_model(venus);
     demo_models.insert("venus", ingot.id);
 }

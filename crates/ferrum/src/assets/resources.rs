@@ -5,7 +5,7 @@ use std::{
 
 use crate::{
     assets::{self, TypeModel},
-    material, structs, texture,
+    renderer,
 };
 use cgmath::{Vector2, Vector3};
 use wgpu::{BindGroup, Buffer, util::DeviceExt};
@@ -135,9 +135,9 @@ pub async fn load_texture(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     is_normal_map: bool,
-) -> anyhow::Result<texture::Texture> {
+) -> anyhow::Result<renderer::Texture> {
     let data: Vec<u8> = load_binary(file_name).await?;
-    texture::Texture::from_bytes(device, queue, &data, file_name, is_normal_map)
+    renderer::Texture::from_bytes(device, queue, &data, file_name, is_normal_map)
 }
 
 pub async fn load_model(
@@ -188,7 +188,7 @@ pub async fn load_model(
     )
     .await?;
 
-    let mut materials: Vec<material::Material> = Vec::new();
+    let mut materials: Vec<renderer::Material> = Vec::new();
     for m in obj_materials? {
         let full_mtl_path: String = if parent_path.is_empty() {
             m.diffuse_texture.clone()
@@ -200,15 +200,11 @@ pub async fn load_model(
                 .to_string()
         };
 
-        let diffuse_texture: texture::Texture =
+        let diffuse_texture: renderer::Texture =
             load_texture(&full_mtl_path, device, queue, false).await?;
 
-        // Si el material no define normal map, usamos una normal plana por
-        // defecto. Antes se caía a la textura de color, que interpretada como
-        // mapa de normales daba direcciones erróneas y la superficie (p. ej. el
-        // suelo) quedaba sin iluminar.
-        let normal_texture: texture::Texture = if m.normal_texture.is_empty() {
-            texture::Texture::default_normal(device, queue)
+        let normal_texture: renderer::Texture = if m.normal_texture.is_empty() {
+            renderer::Texture::default_normal(device, queue)
         } else {
             let full_normal_path: String = if parent_path.is_empty() {
                 m.normal_texture.clone()
@@ -245,7 +241,7 @@ pub async fn load_model(
             label: None,
         });
 
-        materials.push(material::Material {
+        materials.push(renderer::Material {
             name: m.name,
             diffuse_texture,
             normal_texture,
@@ -253,7 +249,7 @@ pub async fn load_model(
         });
     }
 
-    let meshes: Vec<structs::Mesh> = models
+    let meshes: Vec<renderer::Mesh> = models
         .into_iter()
         .map(|m| {
             let has_colors: bool = !m.mesh.vertex_color.is_empty();
@@ -397,7 +393,7 @@ pub async fn load_model(
                     usage: wgpu::BufferUsages::INDEX,
                 });
 
-            structs::Mesh {
+            renderer::Mesh {
                 name: file_name.to_string(),
                 vertex_buffer,
                 index_buffer,

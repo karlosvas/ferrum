@@ -1,4 +1,4 @@
-use crate::{State, math::TransformDelta};
+use crate::{State, assets::InstanceRaw, math::TransformDelta};
 use cgmath::{Matrix4, Point3, Vector3, VectorSpace, ortho};
 use wgpu::{RenderPipeline, ShaderModule};
 
@@ -50,8 +50,7 @@ impl Light {
                 instance.position += transform.translation;
             }
 
-            let raws: Vec<crate::models::InstanceRaw> =
-                l.instances.iter().map(|i| i.to_raw()).collect();
+            let raws: Vec<InstanceRaw> = l.instances.iter().map(|i| i.to_raw()).collect();
             state
                 .queue
                 .write_buffer(&l.instance_buffer, 0, bytemuck::cast_slice(&raws));
@@ -113,8 +112,7 @@ impl Light {
                 instance.position = position;
             }
 
-            let raws: Vec<crate::models::InstanceRaw> =
-                l.instances.iter().map(|i| i.to_raw()).collect();
+            let raws: Vec<InstanceRaw> = l.instances.iter().map(|i| i.to_raw()).collect();
             state
                 .queue
                 .write_buffer(&l.instance_buffer, 0, bytemuck::cast_slice(&raws));

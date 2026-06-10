@@ -1,14 +1,10 @@
-use image::codecs::hdr::HdrDecoder;
-use image::codecs::openexr::OpenExrDecoder;
-use image::{DynamicImage, ImageDecoder};
+use crate::renderer::{self, Texture, texture};
+use image::{DynamicImage, ImageDecoder, codecs::hdr::HdrDecoder, codecs::openexr::OpenExrDecoder};
 use wgpu::{
     BindGroup, BindGroupLayout, CommandEncoder, ComputePass, ComputePipeline, Operations,
     PipelineLayout, RenderPass, RenderPipeline, ShaderModule, ShaderModuleDescriptor,
     TextureFormat,
 };
-
-use crate::texture::Texture;
-use crate::{pipeline, texture};
 
 /// Equirectangular sky file format.
 #[derive(Debug, Clone, Copy)]
@@ -20,7 +16,7 @@ pub enum SkyFormat {
 pub struct HdrPipeline {
     pipeline: wgpu::RenderPipeline,
     bind_group: wgpu::BindGroup,
-    texture: crate::texture::Texture,
+    texture: renderer::Texture,
     width: u32,
     heigth: u32,
     format: wgpu::TextureFormat,
@@ -82,7 +78,7 @@ impl HdrPipeline {
             ],
         });
 
-        let shader: ShaderModuleDescriptor = wgpu::include_wgsl!("shaders/hdr.wgsl");
+        let shader: ShaderModuleDescriptor = wgpu::include_wgsl!("../shaders/hdr.wgsl");
         let pipeline_layout: PipelineLayout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Hdr::pipeline_layout"),
@@ -90,7 +86,7 @@ impl HdrPipeline {
                 immediate_size: 0,
             });
 
-        let pipeline: RenderPipeline = pipeline::create_render_pipeline(
+        let pipeline: RenderPipeline = renderer::create_render_pipeline(
             device,
             &pipeline_layout,
             config.format.add_srgb_suffix(),
@@ -183,7 +179,7 @@ pub struct HdrLoader {
 impl HdrLoader {
     pub fn new(device: &wgpu::Device) -> Self {
         let module: ShaderModule =
-            device.create_shader_module(wgpu::include_wgsl!("shaders/equirectangular.wgsl"));
+            device.create_shader_module(wgpu::include_wgsl!("../shaders/equirectangular.wgsl"));
         // Source equirectangular: 32-bit float because that's what .hdr / .exr give us.
         // Cubemap destination: 16-bit float, filterable on every device without features.
         let source_format: TextureFormat = wgpu::TextureFormat::Rgba32Float;
