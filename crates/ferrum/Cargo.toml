@@ -7,6 +7,7 @@ description = "3D rendering engine library"
 license = "GPL-3.0-only"
 repository = "https://github.com/karlosvas/ferrum"
 homepage = "https://github.com/karlosvas/ferrum"
+readme = "README.md"
 categories = ["graphics", "rendering", "wasm"]
 keywords = ["wgpu", "3d", "engine", "webgpu"]
 
