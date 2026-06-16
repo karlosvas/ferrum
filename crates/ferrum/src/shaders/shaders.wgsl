@@ -1,3 +1,8 @@
+// Main lit shader: tangent-space normal mapping + Blinn-Phong + shadow mapping + wind sway.
+// Normal mapping / TBN matrix based on Learn WGPU and LearnOpenGL:
+//   https://sotrh.github.io/learn-wgpu/intermediate/tutorial11-normals/
+//   https://learnopengl.com/Advanced-Lighting/Normal-Mapping
+
 @group(1) @binding(0)
 var<uniform> camera: CameraUniform;
 @group(2) @binding(0)
@@ -18,9 +23,9 @@ var shadow_sampler: sampler_comparison;
 var<uniform> wind: Wind;
 
 struct Wind {
-    direction: vec2<f32>, // plano XZ, normalizado
-    intensity: f32,       // [0, 1]
-    time: f32,            // segundos acumulados
+    direction: vec2<f32>, 
+    intensity: f32,       
+    time: f32,
 };
 
 struct CameraUniform {
@@ -82,24 +87,18 @@ fn vs_main(
 
     let model_matrix = mat4x4<f32>(model.model_matrix_0, model.model_matrix_1, model.model_matrix_2, model.model_matrix_3);
 
-    // --- Viento: desplazamiento del follaje en el vertex shader ---
-    // Solo afecta a instancias marcadas como follaje (model.wind_weight), porque
-    // el suelo también tiene altura y no debe balancearse.
-    // El peso por altura (normalizado) hace que las puntas se muevan más que la
-    // base. REFERENCE_HEIGHT ≈ altura del modelo de planta en espacio de objeto.
-    let sway_amplitude = 0.5; // cuánto se doblan las hojas (en unidades de mundo)
+    // Wind sway: height-weighted sine displacement in the vertex shader,
+    // same idea as GPU Gems 3 ch. 16 (vegetation animation in Crysis):
+    // https://developer.nvidia.com/gpugems/gpugems3/part-iii-rendering/chapter-16-vegetation-procedural-animation-and-shading-crysis
+    let sway_amplitude = 0.5;
     let reference_height = 6.0;
     var local_pos = model.position;
     let h = clamp(max(local_pos.y, 0.0) / reference_height, 0.0, 1.0);
     let height_weight = h * h;
-    // Fase distinta por vértice para que no se muevan todas a la vez.
     let phase = local_pos.x * 0.7 + local_pos.z * 0.7;
-    // Inclinación constante (las hojas se DOBLAN alejándose del soplido) más una
-    // ondulación y un flutter; siempre positivo para que el movimiento sea
-    // direccional y no un vaivén simétrico.
     let sway = 0.65
-             + sin(wind.time * 2.3 + phase) * 0.25         // ondulación lenta
-             + sin(wind.time * 5.7 + phase * 1.7) * 0.10;  // flutter rápido
+             + sin(wind.time * 2.3 + phase) * 0.25       
+             + sin(wind.time * 5.7 + phase * 1.7) * 0.10;  
     let displacement = wind.direction
         * (sway * wind.intensity * height_weight * model.wind_weight * sway_amplitude);
     local_pos.x += displacement.x;
@@ -136,41 +135,39 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let view_dir = normalize(in.tangent_view_position - in.tangent_position);
     let half_dir  = normalize(view_dir + light_dir);
 
-    // Distance attenuation: constant + linear + quadratic falloff (point light).
-    // Tweak the coefficients to taste — bigger numbers = faster falloff.
+    // Point-light attenuation, coefficients from the Ogre3D table (range ~50):
+    // https://learnopengl.com/Lighting/Light-casters
     let attenuation = 1.0 / (1.0 + 0.09 * distance + 0.032 * distance * distance);
 
     let diffuse_strength = max(dot(tanget_normal, light_dir), 0.0);
     let diffuse_color = light.color * diffuse_strength * attenuation;
 
+    // Blinn-Phong specular (half vector instead of reflection):
+    // https://learnopengl.com/Advanced-Lighting/Advanced-Lighting
     let specular_strength = pow(max(dot(tanget_normal, half_dir), 0.0), 32.0);
     let specular_color = specular_strength * light.color * attenuation;
 
-    // Shadow: project fragment into light-space NDC, then compare depth.
+    // Shadow mapping: project into light space, compare depth, slope-scaled bias,
+    // 3x3 PCF for soft edges. All techniques explained in:
+    // https://learnopengl.com/Advanced-Lighting/Shadows/Shadow-Mapping
     let proj_coords = in.light_space_pos.xyz / in.light_space_pos.w;
-    // NDC x/y [-1,1] → UV [0,1]; flip Y because texture V goes down.
+    // NDC x/y [-1,1] -> UV [0,1]; flip Y because texture V goes down.
     let shadow_uv = proj_coords.xy * vec2<f32>(0.5, -0.5) + vec2<f32>(0.5, 0.5);
-    // Slope-dependent bias: larger at grazing angles to prevent light leaking.
     let cos_theta = clamp(dot(normalize(in.world_normal), normalize(light.position - in.world_position)), 0.0, 1.0);
     let shadow_bias = mix(0.004, 0.0002, cos_theta);
     let current_depth = proj_coords.z - shadow_bias;
 
-    // 3x3 PCF: averages 9 shadow map samples for smoother shadow edges.
-    // textureSampleCompare must be called from uniform control flow (it needs
-    // implicit derivatives), so we always sample and only afterwards decide whether
-    // the fragment lies inside the light frustum. Sampling out-of-range UVs is safe
-    // because the shadow sampler uses ClampToEdge.
+    // textureSampleCompare needs uniform control flow, so always sample (the
+    // constant-bound loop is uniform; ClampToEdge makes out-of-range UVs safe)
+    // and only afterwards decide if the fragment is inside the light frustum.
     let texel = 1.0 / 2048.0;
     var shadow_sum = 0.0;
-    shadow_sum += textureSampleCompare(shadow_map, shadow_sampler, shadow_uv + vec2<f32>(-texel, -texel), current_depth);
-    shadow_sum += textureSampleCompare(shadow_map, shadow_sampler, shadow_uv + vec2<f32>(  0.0,  -texel), current_depth);
-    shadow_sum += textureSampleCompare(shadow_map, shadow_sampler, shadow_uv + vec2<f32>( texel, -texel), current_depth);
-    shadow_sum += textureSampleCompare(shadow_map, shadow_sampler, shadow_uv + vec2<f32>(-texel,   0.0), current_depth);
-    shadow_sum += textureSampleCompare(shadow_map, shadow_sampler, shadow_uv,                             current_depth);
-    shadow_sum += textureSampleCompare(shadow_map, shadow_sampler, shadow_uv + vec2<f32>( texel,   0.0), current_depth);
-    shadow_sum += textureSampleCompare(shadow_map, shadow_sampler, shadow_uv + vec2<f32>(-texel,  texel), current_depth);
-    shadow_sum += textureSampleCompare(shadow_map, shadow_sampler, shadow_uv + vec2<f32>(  0.0,   texel), current_depth);
-    shadow_sum += textureSampleCompare(shadow_map, shadow_sampler, shadow_uv + vec2<f32>( texel,  texel), current_depth);
+    for (var y: i32 = -1; y <= 1; y++) {
+        for (var x: i32 = -1; x <= 1; x++) {
+            let offset = vec2<f32>(f32(x), f32(y)) * texel;
+            shadow_sum += textureSampleCompare(shadow_map, shadow_sampler, shadow_uv + offset, current_depth);
+        }
+    }
 
     // Fragments outside the light frustum (or beyond its depth range) are fully lit.
     let in_bounds = shadow_uv.x >= 0.0 && shadow_uv.x <= 1.0 &&

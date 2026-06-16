@@ -1,10 +1,120 @@
-use crate::renderer::{self, Texture, texture};
+use crate::{
+    assets,
+    renderer::{self, Texture, texture},
+};
 use image::{DynamicImage, ImageDecoder, codecs::hdr::HdrDecoder, codecs::openexr::OpenExrDecoder};
 use wgpu::{
     BindGroup, BindGroupLayout, CommandEncoder, ComputePass, ComputePipeline, Operations,
     PipelineLayout, RenderPass, RenderPipeline, ShaderModule, ShaderModuleDescriptor,
     TextureFormat,
 };
+
+/// Skybox: HDR pipeline (tonemapping), environment cubemap and the render
+/// pipeline that paints the sky where no geometry was drawn.
+pub struct SkyRig {
+    pub hdr: HdrPipeline,
+    pub bind_group: BindGroup,
+    pub pipeline: RenderPipeline,
+}
+
+impl SkyRig {
+    pub async fn new(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        config: &wgpu::SurfaceConfiguration,
+        camera_layout: &BindGroupLayout,
+    ) -> anyhow::Result<Self> {
+        let hdr: HdrPipeline = HdrPipeline::new(device, config);
+        let hdr_loader: HdrLoader = HdrLoader::new(device);
+
+        // Web caps max_texture_dimension_2d at 8192 and wasm32 has a 4 GiB address
+        // space, so the 16K equirectangular (16384px, ~2 GiB decoded) cannot be
+        // loaded in the browser. Use a 4K version on web and keep 16K on native.
+        #[cfg(target_arch = "wasm32")]
+        let sky_file: &str = "exr/NightSkyHDRI014_4K_HDR.exr";
+        #[cfg(not(target_arch = "wasm32"))]
+        let sky_file: &str = "exr/NightSkyHDRI014_16K_HDR.exr";
+
+        let sky_bytes: Vec<u8> = assets::load_binary(sky_file).await?;
+
+        let sky_texture: texture::CubeTexture = hdr_loader.from_equirectangular_bytes(
+            device,
+            queue,
+            &sky_bytes,
+            if sky_file.ends_with(".exr") {
+                SkyFormat::Exr
+            } else {
+                SkyFormat::Hdr
+            },
+            None,
+            Some("sky_texture"),
+        )?;
+
+        let environment_layout: BindGroupLayout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("environment_layout"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::Cube,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+            });
+
+        let bind_group: BindGroup = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("environment_bind_group"),
+            layout: &environment_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(sky_texture.view()),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(sky_texture.sampler()),
+                },
+            ],
+        });
+
+        let layout: PipelineLayout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Sky Pipeline Layout"),
+                bind_group_layouts: &[Some(camera_layout), Some(&environment_layout)],
+                immediate_size: 0,
+            });
+
+        // LessEqual with the fullscreen triangle at z=1.0: the sky only wins on
+        // pixels the geometry left untouched.
+        let pipeline: RenderPipeline = renderer::create_render_pipeline(
+            device,
+            &layout,
+            hdr.format(),
+            Some(Texture::DEPTH_FORMAT),
+            &[],
+            wgpu::PrimitiveTopology::TriangleList,
+            wgpu::include_wgsl!("../shaders/sky.wgsl"),
+            wgpu::CompareFunction::LessEqual,
+        );
+
+        Ok(Self {
+            hdr,
+            bind_group,
+            pipeline,
+        })
+    }
+}
 
 /// Equirectangular sky file format.
 #[derive(Debug, Clone, Copy)]
@@ -94,6 +204,7 @@ impl HdrPipeline {
             &[],
             wgpu::PrimitiveTopology::TriangleList,
             shader,
+            wgpu::CompareFunction::LessEqual,
         );
 
         Self {

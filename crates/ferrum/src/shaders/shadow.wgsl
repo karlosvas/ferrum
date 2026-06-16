@@ -1,3 +1,7 @@
+// Depth-only pass that renders the scene from the light's point of view
+// to build the shadow map (first pass of classic shadow mapping):
+//   https://learnopengl.com/Advanced-Lighting/Shadows/Shadow-Mapping
+
 @group(0) @binding(0)
 var<uniform> light: Light;
 

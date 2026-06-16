@@ -1,18 +1,9 @@
-// Maps HDR values to linear values
-// Based on http://www.oscars.org/science-technology/sci-tech-projects/aces
+// HDR -> SDR tone mapping pass.
+// Based on Learn WGPU's HDR tutorial:
+//   https://sotrh.github.io/learn-wgpu/intermediate/tutorial13-hdr/
 
-// f(x) = (x² + ax + b) / (x² + cx + d)
-// output
-// 1.0 |              ___________
-//     |          __/
-//     |       __/
-//     |    __/
-//     |___/
-//     +------------------------ input HDR
-//     0        1        5      10
-
-// TLDR: clamp(hdr, 0, 1)
-
+// ACES filmic curve, Stephen Hill's fit (matrices include sRGB <-> ACES transforms):
+//   https://github.com/TheRealMJP/BakingLab/blob/master/BakingLab/ACES.hlsl
 fn aces_tone_map(hdr: vec3<f32>) -> vec3<f32> {
     let m1 = mat3x3(
         0.59719, 0.07600, 0.02840,
@@ -40,7 +31,8 @@ fn vs_main(
     @builtin(vertex_index) vi: u32,
 ) -> VertexOutput {
     var out: VertexOutput;
-    // Generate a triangle that covers the whole screen
+    // Single fullscreen triangle, no vertex buffer:
+    // https://www.saschawillems.de/blog/2016/08/13/vulkan-tutorial-on-rendering-a-fullscreen-quad-without-buffers/
     out.uv = vec2<f32>(
         f32((vi << 1u) & 2u),
         f32(vi & 2u),

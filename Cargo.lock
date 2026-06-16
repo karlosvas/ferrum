@@ -734,7 +734,7 @@ dependencies = [
  "egui-wgpu",
  "egui-winit",
  "env_logger",
- "ferrum",
+ "ferrum-wgpu",
  "image 0.24.9",
  "js-sys",
  "log",
@@ -1060,7 +1060,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "ferrum"
+name = "ferrum-wgpu"
 version = "0.1.0"
 dependencies = [
  "anyhow",

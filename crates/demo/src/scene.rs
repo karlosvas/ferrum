@@ -291,7 +291,7 @@ fn setup(state: &mut ferrum::State, demo_models: &Rc<RefCell<HashMap<&str, usize
                 Quaternion::from_angle_y(Deg(0.0)),
                 Vector3::new(1.0, 1.0, 1.0),
             )
-            .with_wind(1.0), // marks the plant as foliage (moves with the wind)
+            .with_wind(1.0),
         ],
         TypeModel::StaticObj,
     );

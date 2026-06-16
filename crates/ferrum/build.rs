@@ -5,26 +5,30 @@ use {
 };
 
 fn workspace_root() -> PathBuf {
-    PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap())
-        .join("../..")
-        .canonicalize()
-        .unwrap()
+    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+    // In workspace: manifest_dir is crates/ferrum/, root is ../../
+    // Published standalone: manifest_dir is the package root itself
+    let candidate = manifest_dir.join("../..");
+    if let std::result::Result::Ok(p) = candidate.canonicalize() {
+        p
+    } else {
+        manifest_dir
+    }
 }
 
 fn main() -> Result<()> {
     let root = workspace_root();
-    println!("cargo:rerun-if-changed={}", root.join("res").display());
+    let res_path = root.join("crates/ferrum/res");
+    println!("cargo:rerun-if-changed={}", res_path.display());
 
     let target: String = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
 
-    if target != "wasm32" {
+    if target != "wasm32" && res_path.exists() {
         let out_dir: String = env::var("OUT_DIR")?;
 
         let mut copy_options: CopyOptions = CopyOptions::new();
         copy_options.overwrite = true;
-        let paths_to_copy = vec![root.join("crates/ferrum/res")];
-        let paths_to_copy: Vec<&std::path::Path> =
-            paths_to_copy.iter().map(|p| p.as_path()).collect();
+        let paths_to_copy = vec![res_path.as_path()];
         copy_items(&paths_to_copy, &out_dir, &copy_options)?;
 
         if std::env::var("CARGO_CFG_TARGET_OS").unwrap() == "windows" {

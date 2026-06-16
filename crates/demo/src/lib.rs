@@ -7,14 +7,12 @@ pub mod ui;
 pub mod ws_web;
 
 use crate::config::AppConfig;
-
-use ferrum::KeyCode;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 #[cfg(target_arch = "wasm32")]
 use winit::event_loop::EventLoopProxy;
 use {
-    ferrum::{State, config::WindowSize},
+    ferrum::{KeyCode, State, config::WindowSize},
     std::sync::Arc,
     winit::{
         application::ApplicationHandler,
@@ -101,8 +99,6 @@ impl App {
 
         #[cfg(target_arch = "wasm32")]
         {
-            // En la web el bucle no puede bloquear: spawn_app devuelve el
-            // control al navegador y sigue corriendo en callbacks.
             use winit::platform::web::EventLoopExtWebSys;
             self.proxy = Some(event_loop.create_proxy());
             event_loop.spawn_app(self);
@@ -117,8 +113,6 @@ impl App {
     }
 }
 
-/// Punto de entrada web: misma escena que el binario nativo, pero los datos
-/// de la RPi llegan como cliente WebSocket del servidor de la demo nativa.
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen(start)]
 pub fn run_web() -> Result<(), wasm_bindgen::JsValue> {
@@ -197,15 +191,14 @@ impl ApplicationHandler<State> for App {
                 .unwrap(),
             );
 
-            if self.ui_fn.is_some() {
-                if let Some(state) = &self.state {
-                    self.egui_layer = Some(ui::EguiLayer::new(state, &window));
-                }
+            if self.ui_fn.is_some()
+                && let Some(state) = &self.state
+            {
+                self.egui_layer = Some(ui::EguiLayer::new(state, &window));
             }
         }
         #[cfg(target_arch = "wasm32")]
         {
-            // El setup ya se sacó arriba con self.setup.take().
             if let Some(proxy) = self.proxy.take() {
                 wasm_bindgen_futures::spawn_local(async move {
                     let mut state = State::new(window, size)
@@ -231,8 +224,6 @@ impl ApplicationHandler<State> for App {
             None => return,
         };
 
-        // La UI ve los eventos primero; si los consume (p. ej. arrastrar un
-        // slider) no deben llegar a la cámara del motor.
         let mut ui_consumed: bool = false;
         if let (Some(egui_layer), Some(window)) = (&mut self.egui_layer, &self.window) {
             ui_consumed = egui_layer.on_window_event(window, &event);
@@ -280,7 +271,8 @@ impl ApplicationHandler<State> for App {
                     event_loop.exit();
                 } else if !ui_consumed {
                     state
-                        .camera_controller
+                        .camera
+                        .controller
                         .handle_key(code, key_state.is_pressed());
                 }
             }
@@ -290,8 +282,6 @@ impl ApplicationHandler<State> for App {
 
     #[allow(unused_mut)]
     fn user_event(&mut self, _event_loop: &ActiveEventLoop, mut event: State) {
-        // En wasm el State llega aquí en diferido (se crea async en `resumed`),
-        // así que la capa de egui y el primer resize se montan en este punto.
         #[cfg(target_arch = "wasm32")]
         if let Some(window) = &self.window {
             let size: PhysicalSize<u32> = window.inner_size();

@@ -1,8 +1,104 @@
-use crate::{State, assets::InstanceRaw, math::TransformDelta};
+use crate::{
+    State,
+    assets::{InstanceRaw, ModelVertex, Vertex},
+    math::TransformDelta,
+    renderer::{self, uniform_layout},
+};
 use cgmath::{Matrix4, Point3, Vector3, VectorSpace, ortho};
-use wgpu::{RenderPipeline, ShaderModule};
+use wgpu::{
+    BindGroup, BindGroupLayout, Buffer, Device, PipelineLayout, Queue, RenderPipeline,
+    ShaderModule, util::DeviceExt,
+};
 
 pub struct Light;
+
+/// Light uniform plus its GPU resources and the emissive-object pipeline.
+pub struct LightRig {
+    pub uniform: LightUniform,
+    pub buffer: Buffer,
+    pub bind_group: BindGroup,
+    pub layout: BindGroupLayout,
+    pub pipeline: RenderPipeline,
+    pub last_update: web_time::Instant,
+}
+
+impl LightRig {
+    pub fn new(
+        device: &Device,
+        camera_layout: &BindGroupLayout,
+        texture_layout: &BindGroupLayout,
+        color_format: wgpu::TextureFormat,
+    ) -> Self {
+        let uniform: LightUniform = LightUniform::new(
+            [15.0, 0.0, 0.0],
+            [7.0, 6.95, 6.85],
+            [
+                [1.0, 0.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0, 0.0],
+                [0.0, 0.0, 1.0, 0.0],
+                [0.0, 0.0, 0.0, 1.0],
+            ],
+        );
+
+        let buffer: Buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("light_buffer"),
+            contents: bytemuck::cast_slice(&[uniform]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let layout: BindGroupLayout = uniform_layout(
+            device,
+            "light_bind_group_layout",
+            wgpu::ShaderStages::VERTEX_FRAGMENT,
+        );
+
+        let bind_group: BindGroup = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("light_bind_group"),
+            layout: &layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: buffer.as_entire_binding(),
+            }],
+        });
+
+        let pipeline_layout: PipelineLayout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("light_pipeline_layout"),
+                bind_group_layouts: &[Some(camera_layout), Some(&layout), Some(texture_layout)],
+                ..Default::default()
+            });
+
+        let pipeline: RenderPipeline = LightUniform::create_render_pipeline(
+            device,
+            &pipeline_layout,
+            Some(color_format),
+            Some(renderer::Texture::DEPTH_FORMAT),
+            &[ModelVertex::desc()],
+            wgpu::ShaderModuleDescriptor {
+                label: Some("normal_shader"),
+                source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/light.wgsl").into()),
+            },
+            Some(wgpu::Face::Back),
+            wgpu::DepthBiasState::default(),
+        );
+
+        Self {
+            uniform,
+            buffer,
+            bind_group,
+            layout,
+            pipeline,
+            last_update: web_time::Instant::now(),
+        }
+    }
+
+    /// Recomputes the shadow view-projection from the current position and
+    /// uploads the uniform to the GPU. Called once per frame.
+    pub fn update(&mut self, queue: &Queue) {
+        self.uniform.recompute_view_proj();
+        queue.write_buffer(&self.buffer, 0, bytemuck::cast_slice(&[self.uniform]));
+    }
+}
 
 /// Convierte un valor de lux en una intensidad de luz HDR en el rango
 /// `[0, MAX_INTENSITY]`.
@@ -45,7 +141,7 @@ impl Light {
         transform: TransformDelta,
         lux: f32,
     ) {
-        if let Some(crate::Bead::Molten(l)) = state.light_models.get_mut(light_id) {
+        if let Some(l) = state.models.light_model_mut(light_id) {
             if let Some(instance) = l.instances.get_mut(0) {
                 instance.position += transform.translation;
             }
@@ -58,9 +154,9 @@ impl Light {
             self.flare_light(state, transform, lux);
 
             state.queue.write_buffer(
-                &state.light_buffer,
+                &state.light.buffer,
                 0,
-                bytemuck::cast_slice(&[state.light_uniform]),
+                bytemuck::cast_slice(&[state.light.uniform]),
             );
         } else {
             log::error!("ID {:?} invalid", light_id);
@@ -92,22 +188,22 @@ impl Light {
         // cambios de luz son más graduales (también suaviza el ruido del sensor).
         const INTENSITY_TIME_CONSTANT: f32 = 0.6;
         let now: web_time::Instant = web_time::Instant::now();
-        let dt: f32 = (now - state.light_last_update).as_secs_f32();
-        state.light_last_update = now;
+        let dt: f32 = (now - state.light.last_update).as_secs_f32();
+        state.light.last_update = now;
         let factor: f32 = 1.0 - (-dt / TIME_CONSTANT).exp();
         let intensity_factor: f32 = 1.0 - (-dt / INTENSITY_TIME_CONSTANT).exp();
 
-        let current: Vector3<f32> = state.light_uniform.position.into();
+        let current: Vector3<f32> = state.light.uniform.position.into();
         let position: Vector3<f32> = current.lerp(position, factor);
 
         // Interpolación del brillo desde el valor actual hacia el objetivo (lux),
         // igual que la posición: evita saltos y parpadeos.
         let target_intensity: f32 = lux_to_intensity(lux);
-        let current_intensity: f32 = state.light_uniform.color[0];
+        let current_intensity: f32 = state.light.uniform.color[0];
         let intensity: f32 =
             current_intensity + (target_intensity - current_intensity) * intensity_factor;
 
-        if let Some(crate::Bead::Molten(l)) = state.light_models.get_mut(light_id) {
+        if let Some(l) = state.models.light_model_mut(light_id) {
             if let Some(instance) = l.instances.get_mut(0) {
                 instance.position = position;
             }
@@ -120,9 +216,9 @@ impl Light {
             self.set_light_position(state, position, intensity);
 
             state.queue.write_buffer(
-                &state.light_buffer,
+                &state.light.buffer,
                 0,
-                bytemuck::cast_slice(&[state.light_uniform]),
+                bytemuck::cast_slice(&[state.light.uniform]),
             );
         } else {
             log::error!("ID {:?} invalid", light_id);
@@ -133,46 +229,19 @@ impl Light {
     /// ya calculada/suavizada y recalcula `light_view_proj`. No recibe lux: el
     /// suavizado del brillo lo hace `set_object_light_position`.
     pub fn set_light_position(&self, state: &mut State, position: Vector3<f32>, intensity: f32) {
-        state.light_uniform.color = [intensity, intensity, intensity];
-
-        state.light_uniform.position = [position.x, position.y, position.z];
-
-        let light_pos: Point3<f32> = Point3::new(position.x, position.y, position.z);
-        let up: Vector3<f32> = if position.x.abs() < 0.01 && position.z.abs() < 0.01 {
-            Vector3::unit_z()
-        } else {
-            Vector3::unit_y()
-        };
-        let light_view: Matrix4<f32> =
-            Matrix4::look_at_rh(light_pos, Point3::new(0.0, 0.0, 0.0), up);
-        let light_proj: Matrix4<f32> = ortho(-20.0, 20.0, -20.0, 20.0, 0.1, 100.0);
-
-        let light_view_proj: Matrix4<f32> = light_proj * light_view;
-        state.light_uniform.light_view_proj = cgmath::Matrix4::into(light_view_proj);
+        state.light.uniform.color = [intensity, intensity, intensity];
+        state.light.uniform.position = [position.x, position.y, position.z];
+        state.light.uniform.recompute_view_proj();
     }
 
     pub fn flare_light(&self, state: &mut State, transform: TransformDelta, lux: f32) {
         let intensity: f32 = lux_to_intensity(lux);
-        state.light_uniform.color = [intensity, intensity, intensity];
+        state.light.uniform.color = [intensity, intensity, intensity];
 
-        let old_position: cgmath::Vector3<f32> = state.light_uniform.position.into();
+        let old_position: cgmath::Vector3<f32> = state.light.uniform.position.into();
         let new_pos: Vector3<f32> = old_position + transform.translation;
-        state.light_uniform.position = [new_pos.x, new_pos.y, new_pos.z];
-
-        let light_pos: cgmath::Point3<f32> = state.light_uniform.position.into();
-        let up: Vector3<f32> = if state.light_uniform.position[0].abs() < 0.01
-            && state.light_uniform.position[2].abs() < 0.01
-        {
-            Vector3::unit_z()
-        } else {
-            Vector3::unit_y()
-        };
-        let light_view: Matrix4<f32> =
-            Matrix4::look_at_rh(light_pos, Point3::new(0.0, 0.0, 0.0), up);
-        let light_proj: Matrix4<f32> = ortho(-20.0, 20.0, -20.0, 20.0, 0.1, 100.0);
-
-        let light_view_proj: Matrix4<f32> = light_proj * light_view;
-        state.light_uniform.light_view_proj = cgmath::Matrix4::into(light_view_proj);
+        state.light.uniform.position = [new_pos.x, new_pos.y, new_pos.z];
+        state.light.uniform.recompute_view_proj();
     }
 }
 
@@ -197,6 +266,24 @@ impl LightUniform {
             _padding: 0,
             _padding2: 0,
         }
+    }
+
+    /// Recomputes `light_view_proj` from the current `position` (ortho shadow
+    /// frustum looking at the origin).
+    pub fn recompute_view_proj(&mut self) {
+        let light_pos: Point3<f32> = self.position.into();
+
+        // Avoid degenerate look_at when the light is nearly aligned with the Y axis.
+        let up: Vector3<f32> = if self.position[0].abs() < 0.01 && self.position[2].abs() < 0.01 {
+            Vector3::unit_z()
+        } else {
+            Vector3::unit_y()
+        };
+        let light_view: Matrix4<f32> =
+            Matrix4::look_at_rh(light_pos, Point3::new(0.0, 0.0, 0.0), up);
+        let light_proj: Matrix4<f32> = ortho(-20.0, 20.0, -20.0, 20.0, 0.1, 100.0);
+
+        self.light_view_proj = (light_proj * light_view).into();
     }
 
     pub fn create_render_pipeline(

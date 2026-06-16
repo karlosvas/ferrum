@@ -1,8 +1,64 @@
 use {
+    crate::renderer::uniform_layout,
     cgmath::{Matrix4, Vector3},
-    wgpu::{BindGroup, BindGroupLayout, Buffer, Device},
+    wgpu::{BindGroup, BindGroupLayout, Buffer, Device, Queue},
     winit::keyboard::KeyCode,
 };
+
+/// Camera and every GPU resource derived from it: uniform, buffer, bind group
+/// and the keyboard controller. The layout is kept because the scene pipelines
+/// reference it when they are built.
+pub struct CameraRig {
+    pub camera: Camera,
+    pub uniform: CameraUniform,
+    pub buffer: Buffer,
+    pub bind_group: BindGroup,
+    pub controller: CameraController,
+    pub layout: BindGroupLayout,
+}
+
+impl CameraRig {
+    pub fn new(device: &Device, aspect: f32) -> Self {
+        let camera: Camera = Camera {
+            eye: (0.0, 4.0, 10.0).into(),
+            target: (0.0, 3.0, 0.0).into(),
+            up: cgmath::Vector3::unit_y(),
+            aspect,
+            fovy: 45.0,
+            znear: 0.1,
+            zfar: 100.0,
+        };
+
+        let layout: BindGroupLayout = uniform_layout(
+            device,
+            "camera_bind_group_layout",
+            wgpu::ShaderStages::VERTEX_FRAGMENT,
+        );
+
+        let (bind_group, buffer, controller, uniform) =
+            Camera::build_camera_setup(&camera, device, &layout);
+
+        Self {
+            camera,
+            uniform,
+            buffer,
+            bind_group,
+            controller,
+            layout,
+        }
+    }
+
+    pub fn set_aspect(&mut self, aspect: f32) {
+        self.camera.aspect = aspect;
+    }
+
+    /// Advances the controller, recomputes the matrices and uploads the uniform.
+    pub fn update(&mut self, queue: &Queue, dt: web_time::Duration) {
+        self.controller.update_camera(&mut self.camera, dt);
+        self.uniform.update_view_proj(&self.camera);
+        queue.write_buffer(&self.buffer, 0, bytemuck::cast_slice(&[self.uniform]));
+    }
+}
 
 #[rustfmt::skip]
 pub const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::from_cols(
@@ -29,7 +85,7 @@ impl Camera {
         layout: &BindGroupLayout,
     ) -> (BindGroup, Buffer, CameraController, CameraUniform) {
         let mut uniform: CameraUniform = CameraUniform::new();
-        uniform.update_view_proj(&camera);
+        uniform.update_view_proj(camera);
 
         use wgpu::util::DeviceExt;
         let buffer: Buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {

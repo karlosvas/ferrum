@@ -1,11 +1,16 @@
 [package]
-name = "ferrum"
+name = "ferrum-wgpu"
 version.workspace = true
 edition.workspace = true
 build = "build.rs"
 description = "3D rendering engine library"
+license = "GPL-3.0-only"
+repository = "https://github.com/karlosvas/ferrum"
+homepage = "https://github.com/karlosvas/ferrum"
 categories = ["graphics", "rendering", "wasm"]
 keywords = ["wgpu", "3d", "engine", "webgpu"]
+
+exclude = ["res/**"]
 
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = false

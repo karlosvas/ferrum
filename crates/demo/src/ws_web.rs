@@ -1,8 +1,3 @@
-//! Cliente WebSocket del navegador (solo wasm32). Se conecta al servidor de
-//! la demo nativa, que retransmite los paquetes binarios `RpiDemo` de la RPi,
-//! y los inyecta en el mismo canal mpsc que consume la escena. Si no hay
-//! servidor accesible la demo sigue funcionando en modo manual (sliders).
-
 use {
     shared::structs::RpiDemo,
     std::sync::mpsc::Sender,
@@ -10,11 +5,9 @@ use {
     web_sys::{BinaryType, CloseEvent, ErrorEvent, MessageEvent, WebSocket},
 };
 
-/// Puerto del servidor axum de la demo nativa (ver main.rs).
 const DEMO_WS_PORT: u16 = 3000;
 
 pub fn connect(tx: Sender<RpiDemo>) {
-    // Mismo host que sirve la página; en local: ws://localhost:3000/demo.
     let host: String = web_sys::window()
         .and_then(|w| w.location().hostname().ok())
         .filter(|h| !h.is_empty())
@@ -28,7 +21,6 @@ pub fn connect(tx: Sender<RpiDemo>) {
             return;
         }
     };
-    // ArrayBuffer en vez de Blob: los paquetes son bincode y se leen síncronos.
     ws.set_binary_type(BinaryType::Arraybuffer);
 
     let onmessage = Closure::<dyn FnMut(MessageEvent)>::new(move |e: MessageEvent| {
@@ -36,10 +28,7 @@ pub fn connect(tx: Sender<RpiDemo>) {
             return;
         };
         let bytes: Vec<u8> = js_sys::Uint8Array::new(&buffer).to_vec();
-        match bincode::serde::decode_from_slice::<RpiDemo, _>(
-            &bytes,
-            bincode::config::standard(),
-        ) {
+        match bincode::serde::decode_from_slice::<RpiDemo, _>(&bytes, bincode::config::standard()) {
             Ok((data, _)) => {
                 let _ = tx.send(data);
             }

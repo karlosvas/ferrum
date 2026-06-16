@@ -1,3 +1,7 @@
+// Skybox: fullscreen triangle whose rays are unprojected back to world space
+// to sample a cubemap. Based on Learn WGPU's HDR tutorial (skybox section):
+//   https://sotrh.github.io/learn-wgpu/intermediate/tutorial13-hdr/
+
 struct Camera {
     view_pos: vec4<f32>,
     view: mat4x4<f32>,
@@ -28,10 +32,13 @@ fn vs_main(
         id & 1u,
         (id >> 1u) & 1u,
     ));
+    // Fullscreen triangle at the far plane (z = 1). The NDC position is also
+    // passed as a plain varying because @builtin(position) turns into
+    // framebuffer coordinates in the fragment stage.
+    let pos = vec4(uv * 4.0 - 1.0, 1.0, 1.0);
     var out: VertexOutput;
-    // out.clip_position = vec4(uv * vec2(4.0, -4.0) + vec2(-1.0, 1.0), 0.0, 1.0);
-    out.clip_position = vec4(uv * 4.0 - 1.0, 1.0, 1.0);
-    out.frag_position = vec4(uv * 4.0 - 1.0, 1.0, 1.0);
+    out.clip_position = pos;
+    out.frag_position = pos;
     return out;
 }
 

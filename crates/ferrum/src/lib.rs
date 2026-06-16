@@ -5,47 +5,29 @@ pub mod math;
 mod renderer;
 mod scene;
 
-use crate::{
-    assets::{DrawShadow, InstanceRaw, Model, ModelVertex, Vertex},
-    config::WindowSize,
-    renderer::CubeTexture,
-    renderer::HdrPipeline,
-    scene::Light,
-    scene::WindUniform,
+use {
+    crate::{
+        assets::{
+            DrawLight, DrawModel, DrawShadow, InstanceRaw, Model, ModelDesc, ModelStore,
+            ModelVertex, Vertex,
+        },
+        config::WindowSize,
+        renderer::{CameraRig, Material, ShadowRig, SkyRig},
+        scene::{Light, LightRig, WindRig},
+    },
+    std::sync::Arc,
+    wgpu::{
+        Adapter, BindGroupLayout, CommandEncoder, Device, PipelineLayout, Queue, RenderPass,
+        RenderPipeline, Surface, SurfaceCapabilities, SurfaceConfiguration, SurfaceTexture,
+        TextureFormat, TextureView,
+    },
 };
 pub use {
-    assets::{Instance, TypeModel},
+    assets::{Ingot, Instance, TypeModel},
     cgmath::{Deg, Matrix4, Point3, Quaternion, Rotation3, Vector3, ortho},
     error::SurfaceError,
-    std::{
-        collections::HashMap,
-        marker::PhantomData,
-        sync::{
-            Arc,
-            atomic::{AtomicUsize, Ordering},
-            mpsc::{self, Sender},
-        },
-    },
-    wgpu::{
-        Adapter, BindGroup, BindGroupLayout, Buffer, CommandEncoder, Device, PipelineLayout, Queue,
-        RenderPass, RenderPipeline, ShaderModule, ShaderModuleDescriptor, Surface,
-        SurfaceCapabilities, SurfaceTexture, TextureFormat, TextureView, util::DeviceExt,
-        wgt::SurfaceConfiguration,
-    },
-    winit::{dpi::PhysicalSize, event_loop::ActiveEventLoop, keyboard::KeyCode},
+    winit::{dpi::PhysicalSize, keyboard::KeyCode},
 };
-
-pub struct Ingot<T> {
-    pub id: usize,
-    _marker: PhantomData<T>,
-}
-
-enum Bead<T> {
-    Burning,
-    Molten(T),
-    #[allow(dead_code)]
-    Ash,
-}
 
 pub struct State {
     pub window_surface: wgpu::Surface<'static>,
@@ -54,44 +36,15 @@ pub struct State {
     pub config: wgpu::SurfaceConfiguration,
     pub is_surface_configuration: bool,
     pub render_pipeline: wgpu::RenderPipeline,
-    pub camera: renderer::Camera,
-    pub camera_uniform: renderer::CameraUniform,
-    pub camera_buffer: wgpu::Buffer,
-    pub camera_bind_group: wgpu::BindGroup,
-    pub camera_controller: renderer::CameraController,
-    // Models
-    static_models: HashMap<usize, Bead<Model>>,
-    light_models: HashMap<usize, Bead<Model>>,
-    actual_ingot: AtomicUsize,
-    model_sender: mpsc::Sender<(usize, Model)>,
-    model_receiver: mpsc::Receiver<(usize, Model)>,
     pub texture_bind_group_layout: Arc<wgpu::BindGroupLayout>,
-    pub last_render_time: web_time::Instant,
     pub depth_texture: renderer::Texture,
-    // Light
-    pub light_uniform: scene::LightUniform,
-    pub light_buffer: Buffer,
-    pub light_bind_group: wgpu::BindGroup,
-    pub light_render_pipeline: wgpu::RenderPipeline,
-    pub light_last_update: web_time::Instant,
-
-    // Wind
-    pub wind_uniform: WindUniform,
-    pub wind_buffer: Buffer,
-    pub wind_bind_group: wgpu::BindGroup,
-    /// Instant of last frame to wind accumulate wind, because strog soplido agite and doblarlas las hojas more faster
-    /// Instante del último frame para acumular la fase del viento. `time` no es
-    /// tiempo real: avanza más rápido cuanto mayor es la intensidad, para que un
-    /// soplido fuerte agite las hojas más deprisa además de doblarlas más.
-    pub wind_start: web_time::Instant,
-    // Shadow
-    pub shadow_texture: renderer::Texture,
-    pub shadow_bind_group: wgpu::BindGroup,
-    pub shadow_render_pipeline: wgpu::RenderPipeline,
-    // HDR
-    pub hdr: renderer::HdrPipeline,
-    pub environment_bind_group: wgpu::BindGroup,
-    pub sky_pipeline: wgpu::RenderPipeline,
+    pub last_render_time: web_time::Instant,
+    pub camera: CameraRig,
+    pub light: LightRig,
+    pub wind: WindRig,
+    pub shadow: ShadowRig,
+    pub sky: SkyRig,
+    pub(crate) models: ModelStore,
 }
 
 impl State {
@@ -162,7 +115,7 @@ impl State {
             .unwrap_or(surface_caps.formats[0]);
 
         // Describe the surface configuration, which includes the format, size, and present mode
-        let config: SurfaceConfiguration<Vec<TextureFormat>> = wgpu::SurfaceConfiguration {
+        let config: SurfaceConfiguration = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,
             width: window_size.width,
@@ -173,411 +126,53 @@ impl State {
             view_formats: vec![surface_format.add_srgb_suffix()],
         };
 
-        let texture_bind_group_layout: Arc<BindGroupLayout> = Arc::new(
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("texture_bind_group_layout"),
-                entries: &[
-                    // Texture
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            multisampled: false,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                        count: None,
-                    },
-                    // Normal Map
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 2,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            multisampled: false,
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 3,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                        count: None,
-                    },
-                ],
-            }),
-        );
+        // Each subsystem builds its own GPU resources; State only wires the
+        // layouts they need from one another.
+        let texture_bind_group_layout: Arc<BindGroupLayout> =
+            Arc::new(Material::bind_group_layout(&device));
 
-        let shader: ShaderModule =
-            device.create_shader_module(wgpu::include_wgsl!("shaders/shaders.wgsl"));
+        let camera: CameraRig = CameraRig::new(&device, config.width as f32 / config.height as f32);
 
-        // Camera
-        let camera: renderer::Camera = renderer::Camera {
-            eye: (0.0, 4.0, 10.0).into(),
-            target: (0.0, 3.0, 0.0).into(),
-            up: cgmath::Vector3::unit_y(),
-            aspect: config.width as f32 / config.height as f32,
-            fovy: 45.0,
-            znear: 0.1,
-            zfar: 100.0,
-        };
-
-        let camera_bind_group_layout: BindGroupLayout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("camera_bind_group_layout"),
-                entries: &[wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                }],
-            });
-
-        let (camera_bind_group, camera_buffer, camera_controller, camera_uniform) =
-            renderer::Camera::build_camera_setup(&camera, &device, &camera_bind_group_layout);
-
-        // Deth texture
         let depth_texture: renderer::Texture =
             renderer::Texture::create_depth_texture(&device, &config, "depth_texture");
 
-        // Sky
-        let hdr: HdrPipeline = renderer::HdrPipeline::new(&device, &config);
+        let sky: SkyRig = SkyRig::new(&device, &queue, &config, &camera.layout).await?;
 
-        let hdr_loader: renderer::HdrLoader = renderer::HdrLoader::new(&device);
-
-        // Web caps max_texture_dimension_2d at 8192 and wasm32 has a 4 GiB address
-        // space, so the 16K equirectangular (16384px, ~2 GiB decoded) cannot be
-        // loaded in the browser. Use a 4K version on web and keep 16K on native.
-        #[cfg(target_arch = "wasm32")]
-        let sky_file: &str = "exr/NightSkyHDRI014_4K_HDR.exr";
-        #[cfg(not(target_arch = "wasm32"))]
-        let sky_file: &str = "exr/NightSkyHDRI014_16K_HDR.exr";
-
-        let sky_bytes: Vec<u8> = assets::load_binary(sky_file).await?;
-
-        let sky_texture: CubeTexture = hdr_loader.from_equirectangular_bytes(
+        let light: LightRig = LightRig::new(
             &device,
-            &queue,
-            &sky_bytes,
-            if sky_file.ends_with(".exr") {
-                renderer::SkyFormat::Exr
-            } else {
-                renderer::SkyFormat::Hdr
-            },
-            None,
-            Some("sky_texture"),
-        )?;
-
-        let environment_layout: BindGroupLayout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("environment_layout"),
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                            view_dimension: wgpu::TextureViewDimension::Cube,
-                            multisampled: false,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                        count: None,
-                    },
-                ],
-            });
-
-        let environment_bind_group: BindGroup =
-            device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("environment_bind_group"),
-                layout: &environment_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::TextureView(&sky_texture.view()),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::Sampler(sky_texture.sampler()),
-                    },
-                ],
-            });
-
-        let sky_pipeline: RenderPipeline = {
-            let layout: PipelineLayout =
-                device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                    label: Some("Sky Pipeline Layout"),
-                    bind_group_layouts: &[
-                        Some(&camera_bind_group_layout),
-                        Some(&environment_layout),
-                    ],
-                    immediate_size: 0,
-                });
-            let shader: ShaderModuleDescriptor = wgpu::include_wgsl!("shaders/sky.wgsl");
-            renderer::create_render_pipeline(
-                &device,
-                &layout,
-                hdr.format(),
-                Some(renderer::Texture::DEPTH_FORMAT),
-                &[],
-                wgpu::PrimitiveTopology::TriangleList,
-                shader,
-            )
-        };
-
-        // Light
-        let light_uniform: scene::LightUniform = scene::LightUniform::new(
-            [15.0, 0.0, 0.0],
-            [7.0, 6.95, 6.85],
-            [
-                [1.0, 0.0, 0.0, 0.0],
-                [0.0, 1.0, 0.0, 0.0],
-                [0.0, 0.0, 1.0, 0.0],
-                [0.0, 0.0, 0.0, 1.0],
-            ],
+            &camera.layout,
+            &texture_bind_group_layout,
+            sky.hdr.format(),
         );
 
-        let light_buffer: Buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("light_buffer"),
-            contents: bytemuck::cast_slice(&[light_uniform]),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
+        let shadow: ShadowRig = ShadowRig::new(&device, &light.layout);
 
-        let light_bind_group_layout: BindGroupLayout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("light_bind_group_layout"),
-                entries: &[wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                }],
-            });
+        let wind: WindRig = WindRig::new(&device);
 
-        let light_bind_group: BindGroup = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("light_bind_group"),
-            layout: &light_bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: light_buffer.as_entire_binding(),
-            }],
-        });
-
-        let light_pipeline_layout: PipelineLayout =
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("light_pipeline_layout"),
-                bind_group_layouts: &[
-                    Some(&camera_bind_group_layout),
-                    Some(&light_bind_group_layout),
-                    Some(&texture_bind_group_layout),
-                ],
-                ..Default::default()
-            });
-
-        let light_render_pipeline: RenderPipeline = {
-            let normal_shader: ShaderModuleDescriptor = wgpu::ShaderModuleDescriptor {
-                label: Some("normal_shader"),
-                source: wgpu::ShaderSource::Wgsl(include_str!("shaders/light.wgsl").into()),
-            };
-
-            scene::LightUniform::create_render_pipeline(
-                &device,
-                &light_pipeline_layout,
-                Some(hdr.format()),
-                Some(renderer::Texture::DEPTH_FORMAT),
-                &[ModelVertex::desc()],
-                normal_shader,
-                Some(wgpu::Face::Back),
-                wgpu::DepthBiasState::default(),
-            )
-        };
-
-        // Shadow
-        let shadow_texture: renderer::Texture =
-            renderer::Texture::create_shadow_map(&device, 2048, "shadow_texture");
-
-        let shadow_bind_group_layout: BindGroupLayout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("shadow_bind_group_layout"),
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Depth,
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            multisampled: false,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Comparison),
-                        count: None,
-                    },
-                ],
-            });
-
-        let shadow_bind_group: BindGroup = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("shadow_bind_group"),
-            layout: &shadow_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&shadow_texture.view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&shadow_texture.sampler),
-                },
-            ],
-        });
-
-        let shadow_pipeline_layout: PipelineLayout =
-            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                label: Some("light_pipeline_layout"),
-                bind_group_layouts: &[Some(&light_bind_group_layout)],
-                ..Default::default()
-            });
-
-        let shadow_render_pipeline: RenderPipeline = {
-            let normal_shader: ShaderModuleDescriptor = wgpu::ShaderModuleDescriptor {
-                label: Some("shadow_normal_shader"),
-                source: wgpu::ShaderSource::Wgsl(include_str!("shaders/shadow.wgsl").into()),
-            };
-
-            scene::LightUniform::create_render_pipeline(
-                &device,
-                &shadow_pipeline_layout,
-                None,
-                Some(renderer::Texture::DEPTH_FORMAT),
-                &[ModelVertex::desc(), InstanceRaw::desc()],
-                normal_shader,
-                None, // no culling: geometry blocks light from both sides
-                wgpu::DepthBiasState {
-                    constant: 2,
-                    slope_scale: 4.0, // compensates for grazing-angle precision loss
-                    clamp: 0.0,
-                },
-            )
-        };
-
-        // Wind
-        let wind_uniform: WindUniform = WindUniform {
-            intensity: 0.8,
-            ..Default::default()
-        };
-
-        let wind_buffer: Buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("wind_buffer"),
-            contents: bytemuck::cast_slice(&[wind_uniform]),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
-
-        let wind_bind_group_layout: BindGroupLayout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("wind_bind_group_layout"),
-                entries: &[wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                }],
-            });
-
-        let wind_bind_group: BindGroup = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("wind_bind_group"),
-            layout: &wind_bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: wind_buffer.as_entire_binding(),
-            }],
-        });
-
-        // Render Pipeline
+        // Main render pipeline (textured geometry with light, shadow and wind)
         let pipeline_render_layout: PipelineLayout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 bind_group_layouts: &[
                     Some(&texture_bind_group_layout),
-                    Some(&camera_bind_group_layout),
-                    Some(&light_bind_group_layout),
-                    Some(&shadow_bind_group_layout),
-                    Some(&wind_bind_group_layout),
+                    Some(&camera.layout),
+                    Some(&light.layout),
+                    Some(&shadow.layout),
+                    Some(&wind.layout),
                 ],
                 label: Some("render_pipeline_layout"),
                 ..Default::default()
             });
 
-        let render_pipeline: RenderPipeline =
-            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some("render_pipeline"),
-                layout: Some(&pipeline_render_layout),
-                vertex: wgpu::VertexState {
-                    module: &shader,
-                    entry_point: Some("vs_main"),
-                    compilation_options: wgpu::PipelineCompilationOptions::default(),
-                    buffers: &[ModelVertex::desc(), InstanceRaw::desc()],
-                },
-                primitive: wgpu::PrimitiveState {
-                    topology: wgpu::PrimitiveTopology::TriangleList,
-                    strip_index_format: None,
-                    front_face: wgpu::FrontFace::Ccw,
-                    cull_mode: Some(wgpu::Face::Back),
-                    unclipped_depth: false,
-                    polygon_mode: wgpu::PolygonMode::Fill,
-                    conservative: false,
-                },
-                depth_stencil: Some(wgpu::DepthStencilState {
-                    format: renderer::Texture::DEPTH_FORMAT,
-                    depth_write_enabled: Some(true),
-                    depth_compare: Some(wgpu::CompareFunction::Less),
-                    stencil: wgpu::StencilState::default(),
-                    bias: wgpu::DepthBiasState::default(),
-                }),
-                multisample: wgpu::MultisampleState {
-                    count: 1,
-                    mask: !0,
-                    alpha_to_coverage_enabled: false,
-                },
-                fragment: Some(wgpu::FragmentState {
-                    module: &shader,
-                    entry_point: Some("fs_main"),
-                    compilation_options: wgpu::PipelineCompilationOptions::default(),
-                    targets: &[Some(wgpu::ColorTargetState {
-                        format: hdr.format(),
-                        blend: Some(wgpu::BlendState::REPLACE),
-                        write_mask: wgpu::ColorWrites::ALL,
-                    })],
-                }),
-                cache: None,
-                multiview_mask: None,
-            });
-
-        let (model_sender, model_receiver) = mpsc::channel::<(usize, Model)>();
+        let render_pipeline: RenderPipeline = renderer::create_render_pipeline(
+            &device,
+            &pipeline_render_layout,
+            sky.hdr.format(),
+            Some(renderer::Texture::DEPTH_FORMAT),
+            &[ModelVertex::desc(), InstanceRaw::desc()],
+            wgpu::PrimitiveTopology::TriangleList,
+            wgpu::include_wgsl!("shaders/shaders.wgsl"),
+            wgpu::CompareFunction::Less,
+        );
 
         Ok(Self {
             window_surface,
@@ -586,34 +181,15 @@ impl State {
             config,
             is_surface_configuration: false,
             render_pipeline,
-            camera,
-            camera_uniform,
-            camera_buffer,
-            camera_bind_group,
-            camera_controller,
-            static_models: HashMap::new(),
-            light_models: HashMap::new(),
-            actual_ingot: AtomicUsize::new(0),
-            model_sender,
-            model_receiver,
-            last_render_time: web_time::Instant::now(),
             texture_bind_group_layout,
             depth_texture,
-            shadow_texture,
-            shadow_bind_group,
-            shadow_render_pipeline,
-            light_uniform,
-            light_buffer,
-            light_bind_group,
-            light_render_pipeline,
-            light_last_update: web_time::Instant::now(),
-            wind_uniform,
-            wind_buffer,
-            wind_bind_group,
-            wind_start: web_time::Instant::now(),
-            hdr,
-            environment_bind_group,
-            sky_pipeline,
+            last_render_time: web_time::Instant::now(),
+            camera,
+            light,
+            wind,
+            shadow,
+            sky,
+            models: ModelStore::new(),
         })
     }
 
@@ -624,7 +200,8 @@ impl State {
 
             self.window_surface.configure(&self.device, &self.config);
 
-            self.camera.aspect = self.config.width as f32 / self.config.height as f32;
+            self.camera
+                .set_aspect(self.config.width as f32 / self.config.height as f32);
 
             self.depth_texture = renderer::Texture::create_depth_texture(
                 &self.device,
@@ -632,7 +209,7 @@ impl State {
                 "depth_texture",
             );
 
-            self.hdr.resize(&self.device, width, height);
+            self.sky.hdr.resize(&self.device, width, height);
             self.is_surface_configuration = true;
         }
     }
@@ -641,9 +218,6 @@ impl State {
         self.render_with_overlay(&mut |_, _, _, _| {})
     }
 
-    /// Igual que `render`, pero invoca `overlay` tras el tonemapping HDR con el
-    /// encoder y la vista del frame final, para pintar UI (egui, debug, etc.)
-    /// encima de la escena sin que el motor dependa de ninguna crate de UI.
     pub fn render_with_overlay(
         &mut self,
         overlay: &mut dyn FnMut(
@@ -669,7 +243,7 @@ impl State {
                     label: Some("Shadow_render_pass"),
                     color_attachments: &[],
                     depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                        view: &self.shadow_texture.view,
+                        view: &self.shadow.texture.view,
                         depth_ops: Some(wgpu::Operations {
                             load: wgpu::LoadOp::Clear(1.0),
                             store: wgpu::StoreOp::Store,
@@ -681,12 +255,10 @@ impl State {
                     multiview_mask: None,
                 });
 
-            shadow_render_pass.set_pipeline(&self.shadow_render_pipeline);
-            shadow_render_pass.set_bind_group(0, &self.light_bind_group, &[]);
-            for bead in self.static_models.values() {
-                if let Bead::Molten(model) = bead {
-                    shadow_render_pass.draw_shadow_model(model, &self.light_bind_group);
-                }
+            shadow_render_pass.set_pipeline(&self.shadow.pipeline);
+            shadow_render_pass.set_bind_group(0, &self.light.bind_group, &[]);
+            for model in self.models.static_loaded() {
+                shadow_render_pass.draw_shadow_model(model, &self.light.bind_group);
             }
         }
         {
@@ -694,7 +266,7 @@ impl State {
                 encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("render_pass"),
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        view: self.hdr.view(),
+                        view: self.sky.hdr.view(),
                         depth_slice: None,
                         resolve_target: None,
                         ops: wgpu::Operations {
@@ -715,37 +287,31 @@ impl State {
                     multiview_mask: None,
                 });
 
-            use assets::DrawLight;
-            render_pass.set_pipeline(&self.light_render_pipeline);
-            for bead in self.light_models.values() {
-                if let Bead::Molten(model) = bead {
-                    render_pass.draw_light_model(
-                        model,
-                        &self.camera_bind_group,
-                        &self.light_bind_group,
-                    );
-                }
+            render_pass.set_pipeline(&self.light.pipeline);
+            for model in self.models.light_loaded() {
+                render_pass.draw_light_model(
+                    model,
+                    &self.camera.bind_group,
+                    &self.light.bind_group,
+                );
             }
 
-            use assets::DrawModel;
             render_pass.set_pipeline(&self.render_pipeline);
-            for bead in self.static_models.values() {
-                if let Bead::Molten(model) = bead {
-                    render_pass.draw_model(
-                        model,
-                        &self.camera_bind_group,
-                        &self.light_bind_group,
-                        &self.shadow_bind_group,
-                        &self.wind_bind_group,
-                    );
-                }
+            for model in self.models.static_loaded() {
+                render_pass.draw_model(
+                    model,
+                    &self.camera.bind_group,
+                    &self.light.bind_group,
+                    &self.shadow.bind_group,
+                    &self.wind.bind_group,
+                );
             }
 
             // Sky pipeline last: leverages the depth test (LessEqual with z=1.0)
             // to paint only the pixels where no geometry was drawn.
-            render_pass.set_pipeline(&self.sky_pipeline);
-            render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
-            render_pass.set_bind_group(1, &self.environment_bind_group, &[]);
+            render_pass.set_pipeline(&self.sky.pipeline);
+            render_pass.set_bind_group(0, &self.camera.bind_group, &[]);
+            render_pass.set_bind_group(1, &self.sky.bind_group, &[]);
             render_pass.draw(0..3, 0..1);
         }
 
@@ -766,7 +332,7 @@ impl State {
             ..Default::default()
         });
 
-        self.hdr.process(&mut encoder, &view);
+        self.sky.hdr.process(&mut encoder, &view);
         overlay(&self.device, &self.queue, &mut encoder, &view);
         self.queue.submit(std::iter::once(encoder.finish()));
 
@@ -775,127 +341,36 @@ impl State {
         Ok(())
     }
 
-    pub fn spawn_model(&mut self, model_desc: assets::ModelDesc) -> Ingot<assets::Model> {
-        let id: usize = self.actual_ingot.fetch_add(1, Ordering::SeqCst);
-
-        match model_desc.kind {
-            TypeModel::StaticObj => self.static_models.insert(id, Bead::Burning),
-            TypeModel::PointOfLight => self.light_models.insert(id, Bead::Burning),
-        };
-
-        let device: Arc<Device> = Arc::clone(&self.device);
-        let queue: Arc<Queue> = Arc::clone(&self.queue);
-        let layout: Arc<BindGroupLayout> = Arc::clone(&self.texture_bind_group_layout);
-        let sender: Sender<(usize, Model)> = self.model_sender.clone();
-        let path: String = model_desc.path.to_string();
-
-        // La carga es asíncrona y el modelo llega por el canal cuando termina
-        // (Bead::Burning hasta entonces). En nativo: hilo + block_on; en wasm
-        // no hay hilos ni block_on, así que se encola en el event loop del
-        // navegador con spawn_local (el fetch de assets ya es async).
-        let instances: Vec<Instance> = model_desc.instances;
-        let kind: TypeModel = model_desc.kind;
-
-        #[cfg(not(target_arch = "wasm32"))]
-        std::thread::spawn(move || {
-            let result: Result<Model, anyhow::Error> = pollster::block_on(assets::load_model(
-                &path, &device, &queue, &layout, instances, kind,
-            ));
-            if let Ok(model) = result {
-                let _ = sender.send((id, model));
-            }
-        });
-
-        #[cfg(target_arch = "wasm32")]
-        wasm_bindgen_futures::spawn_local(async move {
-            let result: Result<Model, anyhow::Error> =
-                resources::load_model(&path, &device, &queue, &layout, instances, kind).await;
-            if let Ok(model) = result {
-                let _ = sender.send((id, model));
-            }
-        });
-
-        Ingot {
-            id,
-            _marker: PhantomData,
-        }
+    pub fn spawn_model(&mut self, model_desc: ModelDesc) -> Ingot<Model> {
+        self.models.spawn(
+            &self.device,
+            &self.queue,
+            &self.texture_bind_group_layout,
+            model_desc,
+        )
     }
 
     pub fn light_handle(&mut self) -> Light {
         Light
     }
 
-    /// Fija el viento que anima el follaje. `direction` es un vector 2D en el
-    /// plano XZ (x = derecha/izquierda, y = adelante/atrás) e `intensity` la
-    /// fuerza [0, 1]. Solo guarda los valores; el `time` y la subida a GPU las
-    /// hace `render` cada frame. Se normaliza la dirección para que la intensidad
-    /// controle por sí sola la magnitud del balanceo.
+    /// See [`WindRig::set`]: stores the wind direction/intensity that animates
+    /// the foliage; the GPU upload happens once per frame in `evolbe`.
     pub fn set_wind(&mut self, direction: [f32; 2], intensity: f32) {
-        let len: f32 = (direction[0] * direction[0] + direction[1] * direction[1]).sqrt();
-        self.wind_uniform.direction = if len > 1e-6 {
-            [direction[0] / len, direction[1] / len]
-        } else {
-            [0.0, 0.0]
-        };
-        self.wind_uniform.intensity = intensity.clamp(0.0, 1.0);
+        self.wind.set(direction, intensity);
     }
 
+    /// Per-frame engine tick: integrates freshly loaded models and updates the
+    /// camera, light and wind uniforms on the GPU.
     pub fn evolbe(&mut self) {
-        while let Ok((id, model)) = self.model_receiver.try_recv() {
-            match model.type_model {
-                TypeModel::StaticObj => self.static_models.insert(id, Bead::Molten(model)),
-                TypeModel::PointOfLight => self.light_models.insert(id, Bead::Molten(model)),
-            };
-        }
+        self.models.collect_loaded();
 
         let now: web_time::Instant = web_time::Instant::now();
         let dt: web_time::Duration = now - self.last_render_time;
         self.last_render_time = now;
-        self.camera_controller.update_camera(&mut self.camera, dt);
-        self.camera_uniform.update_view_proj(&self.camera);
-        self.queue.write_buffer(
-            &self.camera_buffer,
-            0,
-            bytemuck::cast_slice(&[self.camera_uniform]),
-        );
 
-        let light_pos: cgmath::Point3<f32> = self.light_uniform.position.into();
-
-        // Avoid degenerate look_at when the light is nearly aligned with the Y axis.
-        let up: Vector3<f32> = if self.light_uniform.position[0].abs() < 0.01
-            && self.light_uniform.position[2].abs() < 0.01
-        {
-            Vector3::unit_z()
-        } else {
-            Vector3::unit_y()
-        };
-        let light_view: Matrix4<f32> =
-            Matrix4::look_at_rh(light_pos, Point3::new(0.0, 0.0, 0.0), up);
-        let light_proj: Matrix4<f32> = ortho(-20.0, 20.0, -20.0, 20.0, 0.1, 100.0);
-
-        let light_view_proj: Matrix4<f32> = light_proj * light_view;
-        self.light_uniform.light_view_proj = cgmath::Matrix4::into(light_view_proj);
-
-        self.queue.write_buffer(
-            &self.light_buffer,
-            0,
-            bytemuck::cast_slice(&[self.light_uniform]),
-        );
-
-        // Avanzar la FASE del viento (la dirección/intensidad las fija el demo
-        // vía `set_wind`) y subir el uniform a la GPU una vez por frame.
-        // La fase se acumula escalada por la intensidad en vez de usar tiempo
-        // real: soplar fuerte agita las hojas más rápido, no solo más lejos.
-        // Acumular (en vez de multiplicar el tiempo) evita saltos de fase
-        // cuando la intensidad cambia entre frames.
-        let dt: f32 = self.wind_start.elapsed().as_secs_f32();
-        self.wind_start = web_time::Instant::now();
-        let speed: f32 = 0.6 + self.wind_uniform.intensity * 2.4;
-        self.wind_uniform.time += dt * speed;
-        self.queue.write_buffer(
-            &self.wind_buffer,
-            0,
-            bytemuck::cast_slice(&[self.wind_uniform]),
-        );
+        self.camera.update(&self.queue, dt);
+        self.light.update(&self.queue);
+        self.wind.update(&self.queue);
     }
 }

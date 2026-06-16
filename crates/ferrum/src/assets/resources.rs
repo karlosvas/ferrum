@@ -1,7 +1,6 @@
-use std::{
-    io::{BufReader, Cursor},
-    path::{Path, PathBuf},
-};
+use std::io::{BufReader, Cursor};
+#[cfg(not(target_arch = "wasm32"))]
+use std::path::{Path, PathBuf};
 
 use crate::{
     assets::{self, TypeModel},

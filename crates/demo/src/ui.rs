@@ -174,7 +174,8 @@ impl EguiLayer {
             .handle_platform_output(window, output.platform_output);
 
         let pixels_per_point: f32 = output.pixels_per_point;
-        let tris: Vec<egui::ClippedPrimitive> = self.ctx.tessellate(output.shapes, pixels_per_point);
+        let tris: Vec<egui::ClippedPrimitive> =
+            self.ctx.tessellate(output.shapes, pixels_per_point);
         let screen: egui_wgpu::ScreenDescriptor = egui_wgpu::ScreenDescriptor {
             size_in_pixels: [state.config.width, state.config.height],
             pixels_per_point,

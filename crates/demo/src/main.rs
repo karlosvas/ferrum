@@ -24,24 +24,23 @@ struct DemoState {
 }
 
 fn main() -> anyhow::Result<(), Error> {
-    // Loads RPI_USER/RPI_HOST/IP_HOST from .env to prefill the SSH panel.
     dotenvy::dotenv().ok();
 
-    let (tx, rx) = std::sync::mpsc::channel::<RpiDemo>();
+    let (sender, reciver) = std::sync::mpsc::channel::<RpiDemo>();
 
-    // The websocket server lives in its own thread and NEVER takes the demo
+    // The websocket server lives in its own thread and never takes the demo
     // down: without the RPi the demo still starts and works in manual mode
     // with sliders.
     std::thread::spawn(move || match tokio::runtime::Runtime::new() {
         Ok(rt) => {
-            if let Err(e) = rt.block_on(up_websokets(tx)) {
+            if let Err(e) = rt.block_on(up_websokets(sender)) {
                 log::error!("WebSocket server error ({e}); demo keeps running in manual mode");
             }
         }
         Err(e) => log::error!("Could not create the tokio runtime ({e}); manual mode"),
     });
 
-    demo::scene::build_app(rx).run()
+    demo::scene::build_app(reciver).run()
 }
 
 async fn up_websokets(tx: mpsc::Sender<RpiDemo>) -> Result<(), anyhow::Error> {
@@ -109,7 +108,6 @@ async fn handle_socket(mut socket: WebSocket, state: DemoState) -> anyhow::Resul
                             return Ok(());
                         }
                     }
-                    // Slow viewer: old packets get dropped, which is fine.
                     Err(broadcast::error::RecvError::Lagged(_)) => {}
                     Err(broadcast::error::RecvError::Closed) => return Ok(()),
                 }

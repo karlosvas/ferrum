@@ -1,3 +1,7 @@
+// Debug mesh rendered at the light's position.
+// Based on Learn WGPU's lighting tutorial:
+//   https://sotrh.github.io/learn-wgpu/intermediate/tutorial10-lighting/
+
 @group(0) @binding(0)
 var<uniform> camera: Camera;
 @group(1) @binding(0)

@@ -9,7 +9,7 @@ wasm-opt = false
 [dependencies]
 anyhow = "1.0.102"
 shared = { path = "../shared" }
-ferrum = { path = "../ferrum" }
+ferrum = { package = "ferrum-wgpu", path = "../ferrum" }
 winit = { version = "0.30", default-features = false, features = ["rwh_06", "x11", "wayland"] }
 wgpu = { version = "29.0", default-features = false, features = ["wgsl", "vulkan", "dx12", "metal"] }
 log = "0.4"
