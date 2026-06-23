@@ -15,6 +15,14 @@ use {
     tokio::{net::TcpListener, sync::broadcast, time::Interval},
 };
 
+// Web caps max_texture_dimension_2d at 8192 and wasm32 has a 4 GiB address
+// space, so the 16K equirectangular (16384px, ~2 GiB decoded) cannot be
+// loaded in the browser. Use a 4K version on web and keep 16K on native.
+// #[cfg(target_arch = "wasm32")]
+// let sky_file: &str = "exr/NightSkyHDRI014_4K_HDR.exr";
+// #[cfg(not(target_arch = "wasm32"))]
+// let sky_file: &str = "exr/NightSkyHDRI014_16K_HDR.exr";
+//
 #[derive(Clone)]
 struct DemoState {
     data_sender: mpsc::Sender<RpiDemo>,

@@ -2,7 +2,6 @@
 name = "ferrum-wgpu"
 version.workspace = true
 edition.workspace = true
-build = "build.rs"
 description = "3D rendering engine library"
 license = "GPL-3.0-only"
 repository = "https://github.com/karlosvas/ferrum"

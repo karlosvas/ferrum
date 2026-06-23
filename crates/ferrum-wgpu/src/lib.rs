@@ -12,7 +12,7 @@ use {
             ModelVertex, Vertex,
         },
         config::WindowSize,
-        renderer::{CameraRig, Material, ShadowRig, SkyRig},
+        renderer::{CameraRig, HdrPipeline, Material, ShadowRig, SkyRig},
         scene::{Light, LightRig, WindRig},
     },
     std::sync::Arc,
@@ -43,7 +43,8 @@ pub struct State {
     pub light: LightRig,
     pub wind: WindRig,
     pub shadow: ShadowRig,
-    pub sky: SkyRig,
+    pub hdr: HdrPipeline,
+    pub sky: Option<SkyRig>,
     pub(crate) models: ModelStore,
 }
 
@@ -112,7 +113,7 @@ impl State {
             .iter()
             .find(|f| f.is_srgb())
             .copied()
-            .unwrap_or(surface_caps.formats[0]);
+            .unwrap_or(surface_caps.formats[0]); // Fallback to the first suirface
 
         // Describe the surface configuration, which includes the format, size, and present mode
         let config: SurfaceConfiguration = wgpu::SurfaceConfiguration {
@@ -136,13 +137,14 @@ impl State {
         let depth_texture: renderer::Texture =
             renderer::Texture::create_depth_texture(&device, &config, "depth_texture");
 
-        let sky: SkyRig = SkyRig::new(&device, &queue, &config, &camera.layout).await?;
+        // Global HDR
+        let hdr: HdrPipeline = HdrPipeline::new(&device, &config);
 
         let light: LightRig = LightRig::new(
             &device,
             &camera.layout,
             &texture_bind_group_layout,
-            sky.hdr.format(),
+            hdr.format(),
         );
 
         let shadow: ShadowRig = ShadowRig::new(&device, &light.layout);
@@ -166,7 +168,7 @@ impl State {
         let render_pipeline: RenderPipeline = renderer::create_render_pipeline(
             &device,
             &pipeline_render_layout,
-            sky.hdr.format(),
+            hdr.format(),
             Some(renderer::Texture::DEPTH_FORMAT),
             &[ModelVertex::desc(), InstanceRaw::desc()],
             wgpu::PrimitiveTopology::TriangleList,
@@ -188,7 +190,8 @@ impl State {
             light,
             wind,
             shadow,
-            sky,
+            hdr,
+            sky: None,
             models: ModelStore::new(),
         })
     }
@@ -209,7 +212,7 @@ impl State {
                 "depth_texture",
             );
 
-            self.sky.hdr.resize(&self.device, width, height);
+            self.hdr.resize(&self.device, width, height);
             self.is_surface_configuration = true;
         }
     }
@@ -266,7 +269,7 @@ impl State {
                 encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                     label: Some("render_pass"),
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        view: self.sky.hdr.view(),
+                        view: self.hdr.view(),
                         depth_slice: None,
                         resolve_target: None,
                         ops: wgpu::Operations {
@@ -309,9 +312,12 @@ impl State {
 
             // Sky pipeline last: leverages the depth test (LessEqual with z=1.0)
             // to paint only the pixels where no geometry was drawn.
-            render_pass.set_pipeline(&self.sky.pipeline);
-            render_pass.set_bind_group(0, &self.camera.bind_group, &[]);
-            render_pass.set_bind_group(1, &self.sky.bind_group, &[]);
+            if let Some(sky) = &self.sky {
+                render_pass.set_pipeline(&sky.pipeline);
+                render_pass.set_bind_group(0, &self.camera.bind_group, &[]);
+                render_pass.set_bind_group(1, &sky.bind_group, &[]);
+            };
+
             render_pass.draw(0..3, 0..1);
         }
 
@@ -332,7 +338,7 @@ impl State {
             ..Default::default()
         });
 
-        self.sky.hdr.process(&mut encoder, &view);
+        self.hdr.process(&mut encoder, &view);
         overlay(&self.device, &self.queue, &mut encoder, &view);
         self.queue.submit(std::iter::once(encoder.finish()));
 
@@ -352,6 +358,11 @@ impl State {
 
     pub fn light_handle(&mut self) -> Light {
         Light
+    }
+
+    pub fn with_sky(mut self, sky: SkyRig) -> Self {
+        self.sky = Some(sky);
+        self
     }
 
     /// See [`WindRig::set`]: stores the wind direction/intensity that animates

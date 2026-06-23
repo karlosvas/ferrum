@@ -2,6 +2,13 @@ use cgmath::{Matrix3, Matrix4, One, Quaternion, Vector3, Zero};
 
 use crate::renderer;
 
+pub struct BindGroups<'a> {
+    pub camera: &'a wgpu::BindGroup,
+    pub light: &'a wgpu::BindGroup,
+    pub shadow: &'a wgpu::BindGroup,
+    pub wind: &'a wgpu::BindGroup,
+}
+
 pub trait Vertex {
     fn desc() -> wgpu::VertexBufferLayout<'static>;
 }
@@ -66,10 +73,7 @@ pub trait DrawModel<'a> {
         material: &'a renderer::Material,
         instances: std::ops::Range<u32>,
         instance_buffer: &'a wgpu::Buffer,
-        camera_bind_group: &'a wgpu::BindGroup,
-        light_bind_group: &'a wgpu::BindGroup,
-        shadow_bind_group: &'a wgpu::BindGroup,
-        wind_bind_group: &'a wgpu::BindGroup,
+        bind_groups: BindGroups<'a>,
     );
 
     fn draw_model(
@@ -92,19 +96,16 @@ where
         material: &'b renderer::Material,
         instances: std::ops::Range<u32>,
         instance_buffer: &'a wgpu::Buffer,
-        camera_bind_group: &'b wgpu::BindGroup,
-        light_bind_group: &'a wgpu::BindGroup,
-        shadow_bind_group: &'a wgpu::BindGroup,
-        wind_bind_group: &'a wgpu::BindGroup,
+        bind_groups: BindGroups<'a>,
     ) {
         self.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
         self.set_vertex_buffer(1, instance_buffer.slice(..));
         self.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
         self.set_bind_group(0, &material.bind_group, &[]);
-        self.set_bind_group(1, camera_bind_group, &[]);
-        self.set_bind_group(2, light_bind_group, &[]);
-        self.set_bind_group(3, shadow_bind_group, &[]);
-        self.set_bind_group(4, wind_bind_group, &[]);
+        self.set_bind_group(1, bind_groups.camera, &[]);
+        self.set_bind_group(2, bind_groups.light, &[]);
+        self.set_bind_group(3, bind_groups.shadow, &[]);
+        self.set_bind_group(4, bind_groups.wind, &[]);
         self.draw_indexed(0..mesh.indices, 0, instances);
     }
 
@@ -123,10 +124,12 @@ where
                 material,
                 0..model.instances.len() as u32,
                 &model.instance_buffer,
-                camera_bind_group,
-                light_bind_group,
-                shadow_bind_group,
-                wind_bind_group,
+                BindGroups {
+                    camera: camera_bind_group,
+                    light: light_bind_group,
+                    shadow: shadow_bind_group,
+                    wind: wind_bind_group,
+                },
             );
         }
     }

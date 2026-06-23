@@ -1,7 +1,4 @@
-use crate::{
-    assets,
-    renderer::{self, Texture, texture},
-};
+use crate::renderer::{self, Texture, texture};
 use image::{DynamicImage, ImageDecoder, codecs::hdr::HdrDecoder, codecs::openexr::OpenExrDecoder};
 use wgpu::{
     BindGroup, BindGroupLayout, CommandEncoder, ComputePass, ComputePipeline, Operations,
@@ -12,7 +9,7 @@ use wgpu::{
 /// Skybox: HDR pipeline (tonemapping), environment cubemap and the render
 /// pipeline that paints the sky where no geometry was drawn.
 pub struct SkyRig {
-    pub hdr: HdrPipeline,
+    pub texture: texture::CubeTexture,
     pub bind_group: BindGroup,
     pub pipeline: RenderPipeline,
 }
@@ -21,31 +18,19 @@ impl SkyRig {
     pub async fn new(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        config: &wgpu::SurfaceConfiguration,
+        _config: &wgpu::SurfaceConfiguration,
         camera_layout: &BindGroupLayout,
+        format: wgpu::TextureFormat,
+        bytes: &[u8],
+        sky_format: SkyFormat,
     ) -> anyhow::Result<Self> {
-        let hdr: HdrPipeline = HdrPipeline::new(device, config);
         let hdr_loader: HdrLoader = HdrLoader::new(device);
 
-        // Web caps max_texture_dimension_2d at 8192 and wasm32 has a 4 GiB address
-        // space, so the 16K equirectangular (16384px, ~2 GiB decoded) cannot be
-        // loaded in the browser. Use a 4K version on web and keep 16K on native.
-        #[cfg(target_arch = "wasm32")]
-        let sky_file: &str = "exr/NightSkyHDRI014_4K_HDR.exr";
-        #[cfg(not(target_arch = "wasm32"))]
-        let sky_file: &str = "exr/NightSkyHDRI014_16K_HDR.exr";
-
-        let sky_bytes: Vec<u8> = assets::load_binary(sky_file).await?;
-
-        let sky_texture: texture::CubeTexture = hdr_loader.from_equirectangular_bytes(
+        let sky_texture: texture::CubeTexture = hdr_loader.load_equirectangular_bytes(
             device,
             queue,
-            &sky_bytes,
-            if sky_file.ends_with(".exr") {
-                SkyFormat::Exr
-            } else {
-                SkyFormat::Hdr
-            },
+            &bytes,
+            sky_format,
             None,
             Some("sky_texture"),
         )?;
@@ -100,7 +85,7 @@ impl SkyRig {
         let pipeline: RenderPipeline = renderer::create_render_pipeline(
             device,
             &layout,
-            hdr.format(),
+            format,
             Some(Texture::DEPTH_FORMAT),
             &[],
             wgpu::PrimitiveTopology::TriangleList,
@@ -109,7 +94,7 @@ impl SkyRig {
         );
 
         Ok(Self {
-            hdr,
+            texture: sky_texture,
             bind_group,
             pipeline,
         })
@@ -346,7 +331,7 @@ impl HdrLoader {
         }
     }
 
-    pub fn from_equirectangular_bytes(
+    pub fn load_equirectangular_bytes(
         &self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -379,7 +364,7 @@ impl HdrLoader {
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
             },
-            &bytemuck::cast_slice(&pixels),
+            bytemuck::cast_slice(&pixels),
             wgpu::TexelCopyBufferLayout {
                 offset: 0,
                 bytes_per_row: Some(
@@ -428,7 +413,7 @@ impl HdrLoader {
             timestamp_writes: None,
         });
 
-        let num_workgroups: u32 = (dst_size + 15) / 16;
+        let num_workgroups: u32 = dst_size.div_ceil(16);
         pass.set_pipeline(&self.equirect_to_cubemap);
         pass.set_bind_group(0, &bind_group, &[]);
         pass.dispatch_workgroups(num_workgroups, num_workgroups, 6);
