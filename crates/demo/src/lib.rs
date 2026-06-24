@@ -1,4 +1,3 @@
-pub mod config;
 pub mod scene;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod ssh;
@@ -6,13 +5,13 @@ pub mod ui;
 #[cfg(target_arch = "wasm32")]
 pub mod ws_web;
 
-use crate::config::AppConfig;
+use ferrum_wgpu::config::config::FerrumConfig;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 #[cfg(target_arch = "wasm32")]
 use winit::event_loop::EventLoopProxy;
 use {
-    ferrum::{KeyCode, State, config::WindowSize},
+    ferrum_wgpu::{KeyCode, State, config::WindowSize},
     std::sync::Arc,
     winit::{
         application::ApplicationHandler,
@@ -36,21 +35,13 @@ pub struct App {
     ui_fn: Option<UiFn>,
     egui_layer: Option<ui::EguiLayer>,
     window: Option<Arc<Window>>,
-    config: AppConfig,
+    config: FerrumConfig,
     #[cfg(target_arch = "wasm32")]
     pub proxy: Option<EventLoopProxy<State>>,
 }
 
-impl AppConfig {
-    pub fn new(size: Option<PhysicalSize<u32>>) -> Self {
-        Self {
-            size: size.unwrap_or_default(),
-        }
-    }
-}
-
 impl App {
-    pub fn new(config: AppConfig) -> Self {
+    pub fn new(config: FerrumConfig) -> Self {
         Self {
             state: None,
             setup: None,
@@ -139,7 +130,7 @@ impl ApplicationHandler<State> for App {
         #[allow(unused_mut)]
         let mut window_attributes: WindowAttributes = Window::default_attributes()
             .with_title("Ferrum")
-            .with_inner_size(ferrum::PhysicalSize::new(
+            .with_inner_size(ferrum_wgpu::PhysicalSize::new(
                 self.config.size.width,
                 self.config.size.height,
             ));
@@ -173,16 +164,17 @@ impl ApplicationHandler<State> for App {
 
         let window: Arc<Window> = Arc::new(event_loop.create_window(window_attributes).unwrap());
         self.window = Some(Arc::clone(&window));
-        let inner_size: ferrum::PhysicalSize<u32> = window.inner_size();
+        let inner_size: ferrum_wgpu::PhysicalSize<u32> = window.inner_size();
         let size: WindowSize = WindowSize::new(inner_size.width, inner_size.height);
         let setup = self.setup.take();
+        let asset = self.config.asset.clone();
 
         #[cfg(not(target_arch = "wasm32"))]
         {
             let window_for_state: Arc<Window> = Arc::clone(&window);
             self.state = Some(
                 pollster::block_on(async move {
-                    let mut state: State = State::new(window_for_state, size).await?;
+                    let mut state: State = State::new(window_for_state, size, asset).await?;
                     if let Some(s) = setup {
                         s(&mut state);
                     }
@@ -201,7 +193,7 @@ impl ApplicationHandler<State> for App {
         {
             if let Some(proxy) = self.proxy.take() {
                 wasm_bindgen_futures::spawn_local(async move {
-                    let mut state = State::new(window, size)
+                    let mut state = State::new(window, size, asset)
                         .await
                         .expect("Unable to create canvas");
                     if let Some(s) = setup {
@@ -236,7 +228,7 @@ impl ApplicationHandler<State> for App {
                 if let Some(update) = &mut self.update {
                     update(state);
                 }
-                let render_result: Result<(), ferrum::SurfaceError> =
+                let render_result: Result<(), ferrum_wgpu::SurfaceError> =
                     match (&mut self.egui_layer, &mut self.ui_fn, &self.window) {
                         (Some(egui_layer), Some(ui_fn), Some(window)) => {
                             egui_layer.render_with_ui(state, window, ui_fn)
@@ -245,7 +237,7 @@ impl ApplicationHandler<State> for App {
                     };
                 match render_result {
                     Ok(_) => {}
-                    Err(ferrum::SurfaceError::Lost | ferrum::SurfaceError::Outdated) => {
+                    Err(ferrum_wgpu::SurfaceError::Lost | ferrum_wgpu::SurfaceError::Outdated) => {
                         if let Some(window) = &self.window {
                             let size: PhysicalSize<u32> = window.inner_size();
                             state.resize(size.height, size.width);

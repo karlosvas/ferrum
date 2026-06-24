@@ -1,11 +1,14 @@
+use ferrum_wgpu::{
+    EnviroimentDesc, Ingot, SkyFormat,
+    config::{WindowSize, config::FerrumConfig},
+};
 use {
     crate::{
         App,
-        config::AppConfig,
         ui::{UiControls, control_panel},
     },
     cgmath::{InnerSpace, Vector2},
-    ferrum::{
+    ferrum_wgpu::{
         Deg, Instance, Quaternion, Rotation3, TypeModel, Vector3,
         assets::{ModelDesc, models},
     },
@@ -18,7 +21,12 @@ pub fn build_app(rx: mpsc::Receiver<RpiDemo>) -> App {
     let demo_models: Rc<RefCell<HashMap<&str, usize>>> = Rc::new(RefCell::new(HashMap::new()));
     let demo_models_update: Rc<RefCell<HashMap<&str, usize>>> = demo_models.clone();
 
-    let app_config: AppConfig = AppConfig::new(Some(ferrum::PhysicalSize::new(1000, 500)));
+    let app_config: FerrumConfig = FerrumConfig {
+        size: WindowSize::new(1000, 500),
+        #[cfg(not(target_arch = "wasm32"))]
+        asset: ferrum_wgpu::assets::Asset::new(concat!(env!("OUT_DIR"), "/res").to_string()),
+        ..Default::default()
+    };
 
     let mut last_lux: f32 = 0.0;
     let mut light_pos: Vector3<f32> = Vector3::new(0.0, 0.0, 0.0);
@@ -58,7 +66,7 @@ pub fn build_app(rx: mpsc::Receiver<RpiDemo>) -> App {
 
 #[allow(clippy::too_many_arguments)]
 fn update(
-    state: &mut ferrum::State,
+    state: &mut ferrum_wgpu::State,
     demo_models: &Rc<RefCell<HashMap<&str, usize>>>,
     rx: &mpsc::Receiver<RpiDemo>,
     controls: &Rc<RefCell<UiControls>>,
@@ -280,8 +288,14 @@ fn update(
     };
 }
 
-fn setup(state: &mut ferrum::State, demo_models: &Rc<RefCell<HashMap<&str, usize>>>) {
+fn setup(state: &mut ferrum_wgpu::State, demo_models: &Rc<RefCell<HashMap<&str, usize>>>) {
     let mut demo_models = demo_models.borrow_mut();
+
+    let sky: EnviroimentDesc = EnviroimentDesc::new(
+        include_bytes!("../res/exr/NightSkyHDRI014_4K_HDR.exr").to_vec(),
+        SkyFormat::Exr,
+    );
+    state.spawn_enviroiment(sky);
 
     let plant: ModelDesc = ModelDesc::new(
         "plant/plant.obj",
@@ -295,8 +309,7 @@ fn setup(state: &mut ferrum::State, demo_models: &Rc<RefCell<HashMap<&str, usize
         ],
         TypeModel::StaticObj,
     );
-
-    let ingot: ferrum::Ingot<models::Model> = state.spawn_model(plant);
+    let ingot: Ingot<models::Model> = state.spawn_model(plant);
     demo_models.insert("plant", ingot.id);
 
     let floor: ModelDesc = ModelDesc::new(
@@ -304,8 +317,7 @@ fn setup(state: &mut ferrum::State, demo_models: &Rc<RefCell<HashMap<&str, usize
         vec![Instance::default()],
         TypeModel::StaticObj,
     );
-
-    let ingot: ferrum::Ingot<models::Model> = state.spawn_model(floor);
+    let ingot: Ingot<models::Model> = state.spawn_model(floor);
     demo_models.insert("floor", ingot.id);
 
     let venus: ModelDesc = ModelDesc::new(
@@ -313,7 +325,6 @@ fn setup(state: &mut ferrum::State, demo_models: &Rc<RefCell<HashMap<&str, usize
         vec![Instance::default()],
         TypeModel::PointOfLight,
     );
-
-    let ingot: ferrum::Ingot<models::Model> = state.spawn_model(venus);
+    let ingot: Ingot<models::Model> = state.spawn_model(venus);
     demo_models.insert("venus", ingot.id);
 }

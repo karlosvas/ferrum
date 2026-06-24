@@ -1,5 +1,4 @@
 use {
-    ferrum::State,
     std::sync::{Arc, Mutex},
     winit::window::Window,
 };
@@ -131,7 +130,7 @@ pub struct EguiLayer {
 }
 
 impl EguiLayer {
-    pub fn new(state: &State, window: &Window) -> Self {
+    pub fn new(state: &ferrum_wgpu::State, window: &Window) -> Self {
         let ctx: egui::Context = egui::Context::default();
         let winit_state: egui_winit::State = egui_winit::State::new(
             ctx.clone(),
@@ -141,13 +140,21 @@ impl EguiLayer {
             None,
             None,
         );
-        // egui pinta sobre la vista final del frame (post-tonemapping), que se
-        // crea con el formato sRGB de la superficie.
+
+        let output_color_format = state
+            .ferrum_config
+            .surface_config
+            .as_ref()
+            .expect("surface_config debe estar inicializado antes de crear EguiLayer")
+            .format
+            .add_srgb_suffix();
+
         let renderer: egui_wgpu::Renderer = egui_wgpu::Renderer::new(
             &state.device,
-            state.config.format.add_srgb_suffix(),
+            output_color_format,
             egui_wgpu::RendererOptions::default(),
         );
+
         Self {
             ctx,
             winit_state,
@@ -164,10 +171,10 @@ impl EguiLayer {
     /// Renderiza el frame con la UI superpuesta. Sustituye a `state.render()`.
     pub fn render_with_ui(
         &mut self,
-        state: &mut State,
+        state: &mut ferrum_wgpu::State,
         window: &Arc<Window>,
         ui_fn: &mut dyn FnMut(&egui::Context),
-    ) -> Result<(), ferrum::SurfaceError> {
+    ) -> Result<(), ferrum_wgpu::SurfaceError> {
         let raw_input: egui::RawInput = self.winit_state.take_egui_input(window);
         let output: egui::FullOutput = self.ctx.run_ui(raw_input, |ui| ui_fn(ui.ctx()));
         self.winit_state
@@ -177,7 +184,10 @@ impl EguiLayer {
         let tris: Vec<egui::ClippedPrimitive> =
             self.ctx.tessellate(output.shapes, pixels_per_point);
         let screen: egui_wgpu::ScreenDescriptor = egui_wgpu::ScreenDescriptor {
-            size_in_pixels: [state.config.width, state.config.height],
+            size_in_pixels: [
+                state.ferrum_config.size.width,
+                state.ferrum_config.size.height,
+            ],
             pixels_per_point,
         };
 

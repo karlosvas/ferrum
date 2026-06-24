@@ -1,5 +1,8 @@
 use {
-    crate::assets::{self, Model, ModelDesc, TypeModel},
+    crate::{
+        assets::{self, Asset, Model, ModelDesc, TypeModel},
+        config::config::FerrumConfig,
+    },
     std::{
         collections::HashMap,
         marker::PhantomData,
@@ -61,6 +64,7 @@ impl ModelStore {
         queue: &Arc<Queue>,
         layout: &Arc<BindGroupLayout>,
         model_desc: ModelDesc,
+        config: &FerrumConfig,
     ) -> Ingot<Model> {
         let id: usize = self.next_id.fetch_add(1, Ordering::SeqCst);
 
@@ -73,26 +77,35 @@ impl ModelStore {
         let queue: Arc<Queue> = Arc::clone(queue);
         let layout: Arc<BindGroupLayout> = Arc::clone(layout);
         let sender: Sender<(usize, Model)> = self.sender.clone();
-        let path: String = model_desc.path.to_string();
         let instances: Vec<assets::Instance> = model_desc.instances;
         let kind: TypeModel = model_desc.kind;
+        let file_name: String = model_desc.file_name.to_string();
+        let asset: Asset = config.asset.clone();
 
         #[cfg(not(target_arch = "wasm32"))]
         std::thread::spawn(move || {
             let result: Result<Model, anyhow::Error> = pollster::block_on(assets::load_model(
-                &path, &device, &queue, &layout, instances, kind,
+                &asset, &file_name, &device, &queue, &layout, instances, kind,
             ));
-            if let Ok(model) = result {
-                let _ = sender.send((id, model));
+            match result {
+                Ok(model) => {
+                    let _ = sender.send((id, model));
+                }
+                Err(e) => log::error!("Failed to load model '{file_name}': {e:?}"),
             }
         });
 
         #[cfg(target_arch = "wasm32")]
         wasm_bindgen_futures::spawn_local(async move {
-            let result: Result<Model, anyhow::Error> =
-                assets::load_model(&path, &device, &queue, &layout, instances, kind).await;
-            if let Ok(model) = result {
-                let _ = sender.send((id, model));
+            let result: Result<Model, anyhow::Error> = assets::load_model(
+                &asset, &file_name, &device, &queue, &layout, instances, kind,
+            )
+            .await;
+            match result {
+                Ok(model) => {
+                    let _ = sender.send((id, model));
+                }
+                Err(e) => log::error!("Failed to load model '{file_name}': {e:?}"),
             }
         });
 

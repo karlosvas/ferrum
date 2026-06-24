@@ -20,14 +20,14 @@ pub fn spawn_connect(user: String, host: String, ip_host: String, status: Arc<Mu
             }
         };
         if user.is_empty() || host.is_empty() {
-            set("falta usuario u host de la RPi".to_string());
+            set("need users or host of RPi".to_string());
             return;
         }
         let target: String = format!("{user}@{host}");
 
         const BIN: &str = "target/aarch64-unknown-linux-gnu/release/rpi";
         if Path::new(BIN).exists() {
-            set("copiando binario (scp)…".to_string());
+            set("coping binary (scp)…".to_string());
             match Command::new("scp")
                 .args(["-o", "BatchMode=yes", BIN, &format!("{target}:~/rpi")])
                 .output()
@@ -35,13 +35,13 @@ pub fn spawn_connect(user: String, host: String, ip_host: String, status: Arc<Mu
                 Ok(o) if o.status.success() => {}
                 Ok(o) => {
                     set(format!(
-                        "scp falló: {}",
+                        "scp failed: {}",
                         String::from_utf8_lossy(&o.stderr).trim()
                     ));
                     return;
                 }
                 Err(e) => {
-                    set(format!("scp no disponible: {e}"));
+                    set(format!("scp not aviable: {e}"));
                     return;
                 }
             }
@@ -49,10 +49,6 @@ pub fn spawn_connect(user: String, host: String, ip_host: String, status: Arc<Mu
             set("sin binario local (cargo xtask rpi); uso el ya desplegado".to_string());
         }
 
-        // Misma receta que xtask::connect_rpi, con nohup para que el proceso
-        // sobreviva al cierre de la sesión y pkill para no acumular instancias.
-        // BatchMode evita que ssh se quede colgado pidiendo contraseña (hace
-        // falta clave pública instalada en la Pi).
         let remote: String = format!(
             "pkill -x rpi 2>/dev/null; chmod +x ~/rpi && IP_HOST={ip_host} nohup ~/rpi >/dev/null 2>&1 & exit 0"
         );
@@ -68,12 +64,12 @@ pub fn spawn_connect(user: String, host: String, ip_host: String, status: Arc<Mu
             ])
             .output()
         {
-            Ok(o) if o.status.success() => set(format!("✓ rpi lanzado en {host}")),
+            Ok(o) if o.status.success() => set(format!("✓ rpi launched in {host}")),
             Ok(o) => set(format!(
-                "ssh falló: {}",
+                "ssh failed: {}",
                 String::from_utf8_lossy(&o.stderr).trim()
             )),
-            Err(e) => set(format!("ssh no disponible: {e}")),
+            Err(e) => set(format!("ssh not aviable: {e}")),
         }
     });
 }

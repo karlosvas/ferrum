@@ -308,16 +308,16 @@ pub struct Model {
     pub type_model: TypeModel,
 }
 
-pub struct ModelDesc<'a> {
-    pub path: &'a str,
+pub struct ModelDesc {
+    pub file_name: &'static str,
     pub instances: Vec<Instance>,
     pub kind: TypeModel,
 }
 
-impl<'a> ModelDesc<'a> {
-    pub fn new(path: &'a str, instances: Vec<Instance>, kind: TypeModel) -> Self {
+impl ModelDesc {
+    pub fn new(file_name: &'static str, instances: Vec<Instance>, kind: TypeModel) -> Self {
         Self {
-            path,
+            file_name,
             instances,
             kind,
         }

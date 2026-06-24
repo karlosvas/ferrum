@@ -5,13 +5,14 @@ pub mod math;
 mod renderer;
 mod scene;
 
+// Pricvate use
 use {
     crate::{
         assets::{
             DrawLight, DrawModel, DrawShadow, InstanceRaw, Model, ModelDesc, ModelStore,
             ModelVertex, Vertex,
         },
-        config::WindowSize,
+        config::{WindowSize, config::FerrumConfig},
         renderer::{CameraRig, HdrPipeline, Material, ShadowRig, SkyRig},
         scene::{Light, LightRig, WindRig},
     },
@@ -22,10 +23,13 @@ use {
         TextureFormat, TextureView,
     },
 };
+
+// Public use
 pub use {
     assets::{Ingot, Instance, TypeModel},
     cgmath::{Deg, Matrix4, Point3, Quaternion, Rotation3, Vector3, ortho},
     error::SurfaceError,
+    renderer::{EnviroimentDesc, SkyFormat},
     winit::{dpi::PhysicalSize, keyboard::KeyCode},
 };
 
@@ -33,7 +37,7 @@ pub struct State {
     pub window_surface: wgpu::Surface<'static>,
     pub device: Arc<wgpu::Device>,
     pub queue: Arc<wgpu::Queue>,
-    pub config: wgpu::SurfaceConfiguration,
+    pub ferrum_config: FerrumConfig,
     pub is_surface_configuration: bool,
     pub render_pipeline: wgpu::RenderPipeline,
     pub texture_bind_group_layout: Arc<wgpu::BindGroupLayout>,
@@ -45,6 +49,7 @@ pub struct State {
     pub shadow: ShadowRig,
     pub hdr: HdrPipeline,
     pub sky: Option<SkyRig>,
+    pub sky_desc: Option<EnviroimentDesc>,
     pub(crate) models: ModelStore,
 }
 
@@ -55,6 +60,7 @@ impl State {
         + wgpu::WasmNotSendSync
         + 'static,
         window_size: WindowSize,
+        asset: crate::assets::Asset,
     ) -> anyhow::Result<Self> {
         let mut instance_desc: wgpu::InstanceDescriptor =
             wgpu::InstanceDescriptor::new_without_display_handle();
@@ -116,7 +122,7 @@ impl State {
             .unwrap_or(surface_caps.formats[0]); // Fallback to the first suirface
 
         // Describe the surface configuration, which includes the format, size, and present mode
-        let config: SurfaceConfiguration = wgpu::SurfaceConfiguration {
+        let surface_config: SurfaceConfiguration = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,
             width: window_size.width,
@@ -126,19 +132,27 @@ impl State {
             alpha_mode: surface_caps.alpha_modes[0],
             view_formats: vec![surface_format.add_srgb_suffix()],
         };
+        let ferrum_config: FerrumConfig = FerrumConfig {
+            surface_config: Some(surface_config.clone()),
+            asset,
+            ..Default::default()
+        };
 
         // Each subsystem builds its own GPU resources; State only wires the
         // layouts they need from one another.
         let texture_bind_group_layout: Arc<BindGroupLayout> =
             Arc::new(Material::bind_group_layout(&device));
 
-        let camera: CameraRig = CameraRig::new(&device, config.width as f32 / config.height as f32);
+        let camera: CameraRig = CameraRig::new(
+            &device,
+            surface_config.width as f32 / surface_config.height as f32,
+        );
 
         let depth_texture: renderer::Texture =
-            renderer::Texture::create_depth_texture(&device, &config, "depth_texture");
+            renderer::Texture::create_depth_texture(&device, &surface_config, "depth_texture");
 
         // Global HDR
-        let hdr: HdrPipeline = HdrPipeline::new(&device, &config);
+        let hdr: HdrPipeline = HdrPipeline::new(&device, &surface_config);
 
         let light: LightRig = LightRig::new(
             &device,
@@ -180,7 +194,7 @@ impl State {
             window_surface,
             device,
             queue,
-            config,
+            ferrum_config,
             is_surface_configuration: false,
             render_pipeline,
             texture_bind_group_layout,
@@ -192,25 +206,26 @@ impl State {
             shadow,
             hdr,
             sky: None,
+            sky_desc: None,
             models: ModelStore::new(),
         })
     }
 
     pub fn resize(&mut self, height: u32, width: u32) {
         if height > 0 && width > 0 {
-            self.config.height = height;
-            self.config.width = width;
+            self.ferrum_config.size.height = height;
+            self.ferrum_config.size.width = width;
 
-            self.window_surface.configure(&self.device, &self.config);
-
-            self.camera
-                .set_aspect(self.config.width as f32 / self.config.height as f32);
-
-            self.depth_texture = renderer::Texture::create_depth_texture(
-                &self.device,
-                &self.config,
-                "depth_texture",
+            self.camera.set_aspect(
+                self.ferrum_config.size.width as f32 / self.ferrum_config.size.height as f32,
             );
+
+            if let Some(sc) = &self.ferrum_config.surface_config {
+                self.window_surface.configure(&self.device, sc);
+
+                self.depth_texture =
+                    renderer::Texture::create_depth_texture(&self.device, sc, "depth_texture");
+            };
 
             self.hdr.resize(&self.device, width, height);
             self.is_surface_configuration = true;
@@ -316,9 +331,8 @@ impl State {
                 render_pass.set_pipeline(&sky.pipeline);
                 render_pass.set_bind_group(0, &self.camera.bind_group, &[]);
                 render_pass.set_bind_group(1, &sky.bind_group, &[]);
+                render_pass.draw(0..3, 0..1);
             };
-
-            render_pass.draw(0..3, 0..1);
         }
 
         let ouput: SurfaceTexture = match self.window_surface.get_current_texture() {
@@ -333,13 +347,15 @@ impl State {
             wgpu::CurrentSurfaceTexture::Lost => return Err(SurfaceError::Lost),
             wgpu::CurrentSurfaceTexture::Validation => return Err(SurfaceError::Validation),
         };
-        let view: TextureView = ouput.texture.create_view(&wgpu::TextureViewDescriptor {
-            format: Some(self.config.format.add_srgb_suffix()),
-            ..Default::default()
-        });
 
-        self.hdr.process(&mut encoder, &view);
-        overlay(&self.device, &self.queue, &mut encoder, &view);
+        if let Some(sc) = &self.ferrum_config.surface_config {
+            let view: TextureView = ouput.texture.create_view(&wgpu::TextureViewDescriptor {
+                format: Some(sc.format.add_srgb_suffix()),
+                ..Default::default()
+            });
+            self.hdr.process(&mut encoder, &view);
+            overlay(&self.device, &self.queue, &mut encoder, &view);
+        }
         self.queue.submit(std::iter::once(encoder.finish()));
 
         ouput.present();
@@ -353,6 +369,7 @@ impl State {
             &self.queue,
             &self.texture_bind_group_layout,
             model_desc,
+            &self.ferrum_config,
         )
     }
 
@@ -360,9 +377,8 @@ impl State {
         Light
     }
 
-    pub fn with_sky(mut self, sky: SkyRig) -> Self {
-        self.sky = Some(sky);
-        self
+    pub fn spawn_enviroiment(&mut self, enviroiment: EnviroimentDesc) {
+        self.sky_desc = Some(enviroiment);
     }
 
     /// See [`WindRig::set`]: stores the wind direction/intensity that animates
@@ -379,6 +395,21 @@ impl State {
         let now: web_time::Instant = web_time::Instant::now();
         let dt: web_time::Duration = now - self.last_render_time;
         self.last_render_time = now;
+
+        if let (Some(desc), Some(sc)) = (self.sky_desc.take(), &self.ferrum_config.surface_config) {
+            // take() → consume y deja None
+            self.sky = Some(
+                SkyRig::new(
+                    &self.device,
+                    &self.queue,
+                    sc,
+                    &self.camera.layout,
+                    self.hdr.format(),
+                    desc,
+                )
+                .expect("Error with load enviroiment"),
+            );
+        }
 
         self.camera.update(&self.queue, dt);
         self.light.update(&self.queue);

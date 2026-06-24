@@ -1,4 +1,5 @@
 use crate::renderer::{self, Texture, texture};
+use anyhow::Error;
 use image::{DynamicImage, ImageDecoder, codecs::hdr::HdrDecoder, codecs::openexr::OpenExrDecoder};
 use wgpu::{
     BindGroup, BindGroupLayout, CommandEncoder, ComputePass, ComputePipeline, Operations,
@@ -8,6 +9,17 @@ use wgpu::{
 
 /// Skybox: HDR pipeline (tonemapping), environment cubemap and the render
 /// pipeline that paints the sky where no geometry was drawn.
+pub struct EnviroimentDesc {
+    pub bytes: Vec<u8>,
+    pub format: SkyFormat,
+}
+
+impl EnviroimentDesc {
+    pub fn new(bytes: Vec<u8>, format: SkyFormat) -> Self {
+        Self { bytes, format }
+    }
+}
+
 pub struct SkyRig {
     pub texture: texture::CubeTexture,
     pub bind_group: BindGroup,
@@ -15,22 +27,21 @@ pub struct SkyRig {
 }
 
 impl SkyRig {
-    pub async fn new(
+    pub fn new(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         _config: &wgpu::SurfaceConfiguration,
         camera_layout: &BindGroupLayout,
         format: wgpu::TextureFormat,
-        bytes: &[u8],
-        sky_format: SkyFormat,
-    ) -> anyhow::Result<Self> {
+        desc: EnviroimentDesc,
+    ) -> anyhow::Result<Self, Error> {
         let hdr_loader: HdrLoader = HdrLoader::new(device);
 
         let sky_texture: texture::CubeTexture = hdr_loader.load_equirectangular_bytes(
             device,
             queue,
-            &bytes,
-            sky_format,
+            &desc.bytes,
+            &desc.format,
             None,
             Some("sky_texture"),
         )?;
@@ -336,7 +347,7 @@ impl HdrLoader {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         data: &[u8],
-        format: SkyFormat,
+        format: &SkyFormat,
         dst_size: Option<u32>,
         label: Option<&str>,
     ) -> anyhow::Result<texture::CubeTexture> {
