@@ -1,7 +1,7 @@
 [package]
 name = "ferrum-wgpu"
-version.workspace = true
-edition.workspace = true
+version = "0.2.0"                                  # ← EXPLÍCITO, no workspace
+edition = "2024"
 description = "3D rendering engine library"
 license = "GPL-3.0-only"
 repository = "https://github.com/karlosvas/ferrum"
@@ -17,10 +17,19 @@ wasm-opt = false
 
 [dependencies]
 anyhow = "1.0"
-winit = { version = "0.30", default-features = false, features = ["rwh_06", "x11", "wayland"] }
+winit = { version = "0.30", default-features = false, features = [
+  "rwh_06",
+  "x11",
+  "wayland",
+] }
 env_logger = "0.10"
 log = "0.4"
-wgpu = { version = "29.0", default-features = false, features = ["wgsl", "vulkan", "dx12", "metal"] }
+wgpu = { version = "29.0", default-features = false, features = [
+  "wgsl",
+  "vulkan",
+  "dx12",
+  "metal",
+] }
 pollster = "0.3"
 bytemuck = { version = "1.14", features = ["derive"] }
 cgmath = "0.18"
@@ -48,10 +57,10 @@ wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4.30"
 reqwest = "0.13.2"
 web-sys = { version = "0.3", features = [
-    "Document",
-    "Window",
-    "Element",
-    "Location"
+  "Document",
+  "Window",
+  "Element",
+  "Location",
 ] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
@@ -61,8 +70,14 @@ windows-core = "0.61"
 winres = "0.1"
 
 [target.'cfg(target_arch = "aarch64")'.dependencies]
-wgpu = { version = "29.0", default-features = false, features = ["wgsl", "gles"] }
-winit = { version = "0.30", default-features = false, features = ["rwh_06", "x11"] }
+wgpu = { version = "29.0", default-features = false, features = [
+  "wgsl",
+  "gles",
+] }
+winit = { version = "0.30", default-features = false, features = [
+  "rwh_06",
+  "x11",
+] }
 
 [features]
 rpi = []

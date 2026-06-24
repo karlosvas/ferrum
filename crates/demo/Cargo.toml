@@ -1,7 +1,8 @@
 [package]
 name = "demo"
-version.workspace = true
 edition.workspace = true
+license.workspace = true
+publish = false
 build = "build.rs"
 
 [package.metadata.wasm-pack.profile.release]
