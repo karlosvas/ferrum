@@ -1,6 +1,6 @@
 [package]
 name = "ferrum-wgpu"
-version = "0.2.0"                                  # ← EXPLÍCITO, no workspace
+version = "0.2.1"                                  # ← EXPLÍCITO, no workspace
 edition = "2024"
 description = "3D rendering engine library"
 license = "GPL-3.0-only"
@@ -9,8 +9,7 @@ homepage = "https://github.com/karlosvas/ferrum"
 readme = "README.md"
 categories = ["graphics", "rendering", "wasm"]
 keywords = ["wgpu", "3d", "engine", "webgpu"]
-
-exclude = ["res/**"]
+exclude = ["res/**", "examples/"]
 
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = false
@@ -48,7 +47,6 @@ anyhow = "1.0"
 fs_extra = "1.2"
 glob = "0.3"
 
-# WASM
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 console_error_panic_hook = "0.1.6"
 console_log = "1.0"

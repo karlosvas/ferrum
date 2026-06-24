@@ -5,7 +5,7 @@ pub mod math;
 mod renderer;
 mod scene;
 
-// Pricvate use
+// Private use
 use {
     crate::{
         assets::{
@@ -18,9 +18,9 @@ use {
     },
     std::sync::Arc,
     wgpu::{
-        Adapter, BindGroupLayout, CommandEncoder, Device, PipelineLayout, Queue, RenderPass,
-        RenderPipeline, Surface, SurfaceCapabilities, SurfaceConfiguration, SurfaceTexture,
-        TextureFormat, TextureView,
+        Adapter, BindGroupLayout, Device, PipelineLayout, Queue, RenderPass, RenderPipeline,
+        Surface, SurfaceCapabilities, SurfaceConfiguration, SurfaceTexture, TextureFormat,
+        TextureView,
     },
 };
 
@@ -249,11 +249,28 @@ impl State {
             return Ok(());
         }
 
-        let mut encoder: CommandEncoder =
-            self.device
-                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                    label: Some("encoder"),
-                });
+        let output: SurfaceTexture = match self.window_surface.get_current_texture() {
+            wgpu::CurrentSurfaceTexture::Success(t)
+            | wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
+            wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded => {
+                return Ok(());
+            }
+            wgpu::CurrentSurfaceTexture::Outdated => return Err(SurfaceError::Outdated),
+            wgpu::CurrentSurfaceTexture::Lost => return Err(SurfaceError::Lost),
+            wgpu::CurrentSurfaceTexture::Validation => return Err(SurfaceError::Validation),
+        };
+
+        let surface_size = output.texture.size();
+        let depth_size = self.depth_texture.texture.size();
+        if surface_size.width != depth_size.width || surface_size.height != depth_size.height {
+            self.resize(surface_size.height, surface_size.width);
+        }
+
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("encoder"),
+            });
 
         {
             let mut shadow_render_pass: RenderPass =
@@ -325,8 +342,6 @@ impl State {
                 );
             }
 
-            // Sky pipeline last: leverages the depth test (LessEqual with z=1.0)
-            // to paint only the pixels where no geometry was drawn.
             if let Some(sky) = &self.sky {
                 render_pass.set_pipeline(&sky.pipeline);
                 render_pass.set_bind_group(0, &self.camera.bind_group, &[]);
@@ -335,30 +350,17 @@ impl State {
             };
         }
 
-        let ouput: SurfaceTexture = match self.window_surface.get_current_texture() {
-            wgpu::CurrentSurfaceTexture::Success(t)
-            | wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
-            // Frame no disponible temporalmente (minimizada, timeout): se salta
-            // el frame sin tratarlo como error.
-            wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded => {
-                return Ok(());
-            }
-            wgpu::CurrentSurfaceTexture::Outdated => return Err(SurfaceError::Outdated),
-            wgpu::CurrentSurfaceTexture::Lost => return Err(SurfaceError::Lost),
-            wgpu::CurrentSurfaceTexture::Validation => return Err(SurfaceError::Validation),
-        };
-
         if let Some(sc) = &self.ferrum_config.surface_config {
-            let view: TextureView = ouput.texture.create_view(&wgpu::TextureViewDescriptor {
+            let view: TextureView = output.texture.create_view(&wgpu::TextureViewDescriptor {
                 format: Some(sc.format.add_srgb_suffix()),
                 ..Default::default()
             });
             self.hdr.process(&mut encoder, &view);
             overlay(&self.device, &self.queue, &mut encoder, &view);
         }
-        self.queue.submit(std::iter::once(encoder.finish()));
 
-        ouput.present();
+        self.queue.submit(std::iter::once(encoder.finish()));
+        output.present();
 
         Ok(())
     }

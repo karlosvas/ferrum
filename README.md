@@ -56,12 +56,12 @@ Try the engine directly from your browser on the [demo page](https://ferrum.dev/
 
 The included demo connects a **Raspberry Pi** with the following sensors to drive the 3D scene from the real world (the shipped demo scene happens to be a potted plant, but the engine itself is model-agnostic):
 
-| Component                  | Connection         | Purpose                                                                         |
-| -------------------------- | ------------------ | ------------------------------------------------------------------------------- |
-| **TSL2591**                | I2C (`/dev/i2c-1`) | Ambient light sensor — measures lux, full spectrum and infrared                 |
-| **ADS1115**                | External ADC       | Analog-to-digital converter for the microphones                                 |
-| **4× MAX446**              | ADC input pins     | Microphones that detect wind (blowing) and translate it into the scene's wind   |
-| **Wide Angle 120º Camera** | CSI                | Detects light direction to orient the scene illumination                        |
+| Component                  | Connection         | Purpose                                                                       |
+| -------------------------- | ------------------ | ----------------------------------------------------------------------------- |
+| **TSL2591**                | I2C (`/dev/i2c-1`) | Ambient light sensor — measures lux, full spectrum and infrared               |
+| **ADS1115**                | External ADC       | Analog-to-digital converter for the microphones                               |
+| **4× MAX446**              | ADC input pins     | Microphones that detect wind (blowing) and translate it into the scene's wind |
+| **Wide Angle 120º Camera** | CSI                | Detects light direction to orient the scene illumination                      |
 
 Sensor data is streamed to the engine in real time via **WebSockets**, so real-world light and wind directly affect the 3D scene.
 
@@ -156,11 +156,11 @@ trade-off keeps the experience within the limits any browser engine can render:
 
 ## Pricing
 
-| Plan           | Price           | Includes                                                               |
-| -------------- | --------------- | ---------------------------------------------------------------------- |
-| **FREE**       | $0              | 3 active models, WebGL export, Discord community                       |
-| **STUDIO**     | $100 (lifetime) | Unlimited models, WASM+WebGL export, source code access                |
-| **ENTERPRISE** | Custom          | Multi-site licenses, 24/7 support, custom integrations                 |
+| Plan           | Price           | Includes                                                |
+| -------------- | --------------- | ------------------------------------------------------- |
+| **FREE**       | $0              | 3 active models, WebGL export, Discord community        |
+| **STUDIO**     | $100 (lifetime) | Unlimited models, WASM+WebGL export, source code access |
+| **ENTERPRISE** | Custom          | Multi-site licenses, 24/7 support, custom integrations  |
 
 Every user can upload their own 3D models and render them inside the engine.
 
@@ -168,22 +168,22 @@ Every user can upload their own 3D models and render them inside the engine.
 
 ## Tech Stack
 
-| Layer           | Technology                                                                   |
-| --------------- | ---------------------------------------------------------------------------- |
-| **Language**    | Rust (edition 2024)                                                          |
-| **Graphics**    | [wgpu](https://wgpu.rs/) 0.28                                                |
-| **Windowing**   | [winit](https://github.com/rust-windowing/winit) 0.30                        |
+| Layer           | Technology                                                                        |
+| --------------- | --------------------------------------------------------------------------------- |
+| **Language**    | Rust (edition 2024)                                                               |
+| **Graphics**    | [wgpu](https://wgpu.rs/) 0.28                                                     |
+| **Windowing**   | [winit](https://github.com/rust-windowing/winit) 0.30                             |
 | **Shading**     | WGSL (Blinn-Phong, HDR + ACES, shadow mapping, skybox, equirectangular → cubemap) |
-| **Math**        | cgmath 0.18                                                                  |
-| **3D Models**   | Wavefront .obj (async loading via tobj)                                      |
-| **Textures**    | PNG, JPEG, HDR, EXR, ICO                                                     |
-| **Frontend**    | [Astro](https://astro.build/) 5 + [Tailwind CSS](https://tailwindcss.com/) 4 |
-| **WebAssembly** | wasm-bindgen + wasm-pack                                                     |
-| **Web assets**  | Cloudflare R2                                                                |
-| **Pi sensors**  | linux-embedded-hal + tsl2591-rs (I2C)                                        |
-| **Build tools** | Cargo xtask                                                                  |
-| **Deploy**      | Vercel                                                                       |
-| **Payments**    | Stripe                                                                       |
+| **Math**        | cgmath 0.18                                                                       |
+| **3D Models**   | Wavefront .obj (async loading via tobj)                                           |
+| **Textures**    | PNG, JPEG, HDR, EXR, ICO                                                          |
+| **Frontend**    | [Astro](https://astro.build/) 5 + [Tailwind CSS](https://tailwindcss.com/) 4      |
+| **WebAssembly** | wasm-bindgen + wasm-pack                                                          |
+| **Web assets**  | Cloudflare R2                                                                     |
+| **Pi sensors**  | linux-embedded-hal + tsl2591-rs (I2C)                                             |
+| **Build tools** | Cargo xtask                                                                       |
+| **Deploy**      | Vercel                                                                            |
+| **Payments**    | Stripe                                                                            |
 
 ### Graphics Backends
 
@@ -254,14 +254,14 @@ Ferrum is a Cargo workspace split into focused crates. The engine itself
 (`ferrum`) is independent of the demo and the sensor firmware — everything else
 just consumes its public API.
 
-| Crate / dir | Role |
-| ----------- | ---- |
+| Crate / dir         | Role                                                                                                                                                                             |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **`crates/ferrum`** | The rendering engine: graphics pipeline, lighting (HDR + ACES, shadows, normal mapping), skybox, camera, async model loading and the WGSL shaders. This is the reusable library. |
-| **`crates/demo`** | The interactive application that drives the engine — windowing, UI overlay, and the real-time scene fed by Raspberry Pi sensor data over WebSockets. |
-| **`crates/rpi`** | Firmware that runs on the Raspberry Pi: reads the I²C sensors (light, microphones, camera) and streams readings to the demo. |
-| **`crates/shared`** | Data structures shared between the demo and the Pi firmware (serialized over the wire). |
-| **`crates/xtask`** | Build automation — `web`, `rpi`, `vercel-deploy`, `run` commands. |
-| **`www/`** | Astro + Tailwind web frontend that hosts the WASM build and the demo page. |
+| **`crates/demo`**   | The interactive application that drives the engine — windowing, UI overlay, and the real-time scene fed by Raspberry Pi sensor data over WebSockets.                             |
+| **`crates/rpi`**    | Firmware that runs on the Raspberry Pi: reads the I²C sensors (light, microphones, camera) and streams readings to the demo.                                                     |
+| **`crates/shared`** | Data structures shared between the demo and the Pi firmware (serialized over the wire).                                                                                          |
+| **`crates/xtask`**  | Build automation — `web`, `rpi`, `vercel-deploy`, `run` commands.                                                                                                                |
+| **`www/`**          | Astro + Tailwind web frontend that hosts the WASM build and the demo page.                                                                                                       |
 
 > The `ferrum` engine crate has no dependency on `demo`, `rpi` or `shared`, so it
 > can be reused as a standalone 3D renderer.
@@ -270,7 +270,14 @@ just consumes its public API.
 
 ## License
 
-**GNU General Public License v3.0** — see [LICENSE](LICENSE).
+Copyright (c) 2026 [Tu nombre]
+
+Ferrum is dual-licensed:
+
+- **Open Source**: GPL-3.0-only — allows use, modification, and distribution under the terms of the GNU General Public License v3.0.
+- **Commercial**: A proprietary license is available for organizations that wish to use Ferrum in closed-source or commercial products without the restrictions of the GPL.
+
+To purchase a commercial license, please contact: **[tu-email@dominio.com]**
 
 ---
 
