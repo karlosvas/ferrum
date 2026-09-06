@@ -1,9 +1,8 @@
-use {
-    crate::renderer::uniform_layout,
-    cgmath::{Matrix4, Vector3},
-    wgpu::{BindGroup, BindGroupLayout, Buffer, Device, Queue},
-    winit::keyboard::KeyCode,
-};
+use cgmath::{Matrix4, Vector3};
+use wgpu::{BindGroup, BindGroupLayout, Buffer, Device, Queue};
+use winit::keyboard::KeyCode;
+
+use crate::renderer::uniform_layout;
 
 /// Camera and every GPU resource derived from it: uniform, buffer, bind group
 /// and the keyboard controller. The layout is kept because the scene pipelines

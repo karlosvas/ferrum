@@ -1,8 +1,9 @@
-use ferrum_wgpu::{
-    config::{config::FerrumConfig, WindowSize},
-    State,
-};
 use std::sync::Arc;
+
+use ferrum_wgpu::{
+    State,
+    config::{WindowSize, config::FerrumConfig},
+};
 use winit::{
     application::ApplicationHandler,
     event::WindowEvent,

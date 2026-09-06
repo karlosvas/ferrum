@@ -1,13 +1,14 @@
+use cgmath::{Matrix4, Point3, Vector3, VectorSpace, ortho};
+use wgpu::{
+    BindGroup, BindGroupLayout, Buffer, Device, PipelineLayout, Queue, RenderPipeline,
+    ShaderModule, util::DeviceExt,
+};
+
 use crate::{
     State,
     assets::{InstanceRaw, ModelVertex, Vertex},
     math::TransformDelta,
     renderer::{self, uniform_layout},
-};
-use cgmath::{Matrix4, Point3, Vector3, VectorSpace, ortho};
-use wgpu::{
-    BindGroup, BindGroupLayout, Buffer, Device, PipelineLayout, Queue, RenderPipeline,
-    ShaderModule, util::DeviceExt,
 };
 
 pub struct Light;

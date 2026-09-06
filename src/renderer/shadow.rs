@@ -1,10 +1,9 @@
-use {
-    crate::{
-        assets::{InstanceRaw, ModelVertex, Vertex},
-        renderer,
-        scene::LightUniform,
-    },
-    wgpu::{BindGroup, BindGroupLayout, Device, PipelineLayout, RenderPipeline},
+use wgpu::{BindGroup, BindGroupLayout, Device, PipelineLayout, RenderPipeline};
+
+use crate::{
+    assets::{InstanceRaw, ModelVertex, Vertex},
+    renderer,
+    scene::LightUniform,
 };
 
 /// Shadow map (depth-only pass from the light's point of view) and the bind

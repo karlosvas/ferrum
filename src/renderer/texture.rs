@@ -1,8 +1,6 @@
-use {
-    anyhow::{Ok, Result},
-    image::{DynamicImage, ImageBuffer},
-    wgpu::{Extent3d, Sampler, TextureView},
-};
+use anyhow::{Ok, Result};
+use image::{DynamicImage, ImageBuffer};
+use wgpu::{Extent3d, Sampler, TextureView};
 
 pub struct Texture {
     pub texture: wgpu::Texture,

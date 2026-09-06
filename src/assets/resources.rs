@@ -1,15 +1,14 @@
+use std::io::{BufReader, Cursor};
+#[cfg(not(target_arch = "wasm32"))]
+use std::path::{Path, PathBuf};
+
+use cgmath::{Vector2, Vector3};
+use wgpu::{BindGroup, Buffer, util::DeviceExt};
+
 use crate::{
     assets::{self, TypeModel},
     renderer,
 };
-use {
-    cgmath::{Vector2, Vector3},
-    std::io::{BufReader, Cursor},
-    wgpu::{BindGroup, Buffer, util::DeviceExt},
-};
-
-#[cfg(not(target_arch = "wasm32"))]
-use std::path::{Path, PathBuf};
 
 #[derive(Clone)]
 pub struct Asset {

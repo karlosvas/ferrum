@@ -6,24 +6,12 @@ mod renderer;
 mod scene;
 
 // Private use
-use {
-    crate::{
-        assets::{
-            DrawLight, DrawModel, DrawShadow, InstanceRaw, Model, ModelDesc, ModelStore,
-            ModelVertex, Vertex,
-        },
-        config::{WindowSize, config::FerrumConfig},
-        renderer::{CameraRig, HdrPipeline, Material, ShadowRig, SkyRig},
-        scene::{Light, LightRig, WindRig},
-    },
-    std::sync::Arc,
-    wgpu::{
-        Adapter, BindGroupLayout, Device, PipelineLayout, Queue, RenderPass, RenderPipeline,
-        Surface, SurfaceCapabilities, SurfaceConfiguration, SurfaceTexture, TextureFormat,
-        TextureView,
-    },
-};
+use std::sync::Arc;
 
+use wgpu::{
+    Adapter, BindGroupLayout, Device, PipelineLayout, Queue, RenderPass, RenderPipeline, Surface,
+    SurfaceCapabilities, SurfaceConfiguration, SurfaceTexture, TextureFormat, TextureView,
+};
 // Public use
 pub use {
     assets::{Ingot, Instance, TypeModel},
@@ -31,6 +19,16 @@ pub use {
     error::SurfaceError,
     renderer::{EnviroimentDesc, SkyFormat},
     winit::{dpi::PhysicalSize, keyboard::KeyCode},
+};
+
+use crate::{
+    assets::{
+        DrawLight, DrawModel, DrawShadow, InstanceRaw, Model, ModelDesc, ModelStore, ModelVertex,
+        Vertex,
+    },
+    config::{WindowSize, config::FerrumConfig},
+    renderer::{CameraRig, HdrPipeline, Material, ShadowRig, SkyRig},
+    scene::{Light, LightRig, WindRig},
 };
 
 pub struct State {

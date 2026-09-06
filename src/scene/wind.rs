@@ -1,7 +1,6 @@
-use {
-    crate::renderer::uniform_layout,
-    wgpu::{BindGroup, BindGroupLayout, Buffer, Device, Queue, util::DeviceExt},
-};
+use wgpu::{BindGroup, BindGroupLayout, Buffer, Device, Queue, util::DeviceExt};
+
+use crate::renderer::uniform_layout;
 
 /// Wind state and its GPU resources. The demo sets direction/intensity via
 /// [`WindRig::set`]; the phase advances and is uploaded once per frame in

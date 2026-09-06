@@ -1,18 +1,18 @@
-use {
-    crate::{
-        assets::{self, Asset, Model, ModelDesc, TypeModel},
-        config::config::FerrumConfig,
+use std::{
+    collections::HashMap,
+    marker::PhantomData,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+        mpsc::{self, Receiver, Sender},
     },
-    std::{
-        collections::HashMap,
-        marker::PhantomData,
-        sync::{
-            Arc,
-            atomic::{AtomicUsize, Ordering},
-            mpsc::{self, Receiver, Sender},
-        },
-    },
-    wgpu::{BindGroupLayout, Device, Queue},
+};
+
+use wgpu::{BindGroupLayout, Device, Queue};
+
+use crate::{
+    assets::{self, Asset, Model, ModelDesc, TypeModel},
+    config::config::FerrumConfig,
 };
 
 /// Handle to a model spawned in the [`ModelStore`]; the forge metaphor: the

@@ -1,11 +1,15 @@
-use crate::renderer::{self, Texture, texture};
 use anyhow::Error;
-use image::{DynamicImage, ImageDecoder, codecs::hdr::HdrDecoder, codecs::openexr::OpenExrDecoder};
+use image::{
+    DynamicImage, ImageDecoder,
+    codecs::{hdr::HdrDecoder, openexr::OpenExrDecoder},
+};
 use wgpu::{
     BindGroup, BindGroupLayout, CommandEncoder, ComputePass, ComputePipeline, Operations,
     PipelineLayout, RenderPass, RenderPipeline, ShaderModule, ShaderModuleDescriptor,
     TextureFormat,
 };
+
+use crate::renderer::{self, Texture, texture};
 
 /// Skybox: HDR pipeline (tonemapping), environment cubemap and the render
 /// pipeline that paints the sky where no geometry was drawn.
